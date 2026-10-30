@@ -5,9 +5,16 @@
  * handles forwarded/manual message import, and records user feedback.
  */
 
-import { Bot, Context, type BotConfig } from 'grammy';
+import { Bot, Context, Keyboard, InlineKeyboard, type BotConfig } from 'grammy';
 import type { UserFromGetMe } from 'grammy/types';
 import type { Db } from '../database/client.js';
+import {
+  notifications,
+  evaluations,
+  jobs,
+  feedback,
+  sourceMessages,
+} from '../database/schema.js';
 import { createSourcesRepo } from '../database/repositories/sources.js';
 import { createProfileRepo } from '../database/repositories/profile.js';
 import { createEvaluationsRepo } from '../database/repositories/evaluations.js';
@@ -17,8 +24,22 @@ import { createFeedbackRepo } from '../database/repositories/feedback.js';
 import { createAppStateRepo } from '../database/repositories/app-state.js';
 import { IngestionService } from '../pipeline/ingestion.js';
 import { ManualImportAdapter } from '../sources/manual-adapter.js';
+import { TelegramWebAdapter } from '../sources/telegram-web-adapter.js';
+import { formatVerbatim } from '../notifications/formatter.js';
 import { evaluate, profileFromDb } from '../matching/engine.js';
+import { config } from '../config/index.js';
 import { logger } from '../observability/logger.js';
+
+export const persistentControlKeyboard = new Keyboard()
+  .text('📥 Fetch 50 Recent Jobs')
+  .row()
+  .text('🧹 Clear Chat')
+  .text('🔄 Wipe & Restart')
+  .row()
+  .text('📊 Status')
+  .text('👤 Profile')
+  .resized()
+  .persistent();
 
 export function createBot(
   token: string,
@@ -58,47 +79,212 @@ export function createBot(
   bot.command('start', async (ctx) => {
     const text =
       `👋 <b>Welcome to AfriPersonal!</b>\n\n` +
-      `I am your personal, private job-matching assistant.\n` +
-      `I evaluate job posts deterministically against your career profile and send you only the relevant opportunities.\n\n` +
-      `<b>Available Commands:</b>\n` +
-      `• /status — Check pipeline status and queues\n` +
-      `• /profile — View your active matching profile\n` +
-      `• /matches — View recent matched jobs\n` +
-      `• /sources — List configured sources\n` +
-      `• /stats — View processing and matching statistics\n` +
-      `• /pause — Pause notifications and processing\n` +
-      `• /resume — Resume processing\n` +
-      `• /help — Full usage and import instructions\n\n` +
-      `💡 <i>Tip: Forward any job post directly to this chat to evaluate it immediately!</i>`;
-    await ctx.reply(text, { parse_mode: 'HTML' });
+      `Your automated technical job watcher is active.\n` +
+      `I monitor <b>@freelance_ethio</b>, strictly filter for <b>technical titles only</b>, and forward matches verbatim.\n\n` +
+      `Click <b>📥 Fetch 50 Recent Jobs</b> below at any time to instantly screen the latest posts.\n\n` +
+      `<b>Quick Actions (Permanent Keyboard Below):</b>\n` +
+      `• <b>📥 Fetch 50 Recent Jobs</b> — Scan the latest 50 posts immediately\n` +
+      `• <b>🧹 Clear Chat</b> — Delete job alerts from this chat\n` +
+      `• <b>🔄 Wipe & Restart</b> — Fresh start & clean re-fetch\n` +
+      `• <b>📊 Status</b> — Check pipeline and source status\n` +
+      `• <b>👤 Profile</b> — View your active career profile`;
+
+    await ctx.reply(text, {
+      parse_mode: 'HTML',
+      reply_markup: persistentControlKeyboard,
+    });
   });
+
+  // ── Helper: Delete sent notification messages from Telegram chat ────────────
+  async function clearSentChatMessages(statusMsgId?: number): Promise<number> {
+    const allNotifs = db.select().from(notifications).all();
+    let deleted = 0;
+
+    for (const notif of allNotifs) {
+      if (notif.telegramMessageId && notif.telegramMessageId !== statusMsgId) {
+        try {
+          await bot.api.deleteMessage(ownerChatId, notif.telegramMessageId);
+          deleted++;
+        } catch {
+          // Ignore already deleted or expired messages
+        }
+      }
+    }
+
+    db.delete(notifications).run();
+    return deleted;
+  }
+
+  // ── /clear ─────────────────────────────────────────────────────────────────
+  const handleClear = async (ctx: Context) => {
+    const progress = await ctx.reply('🧹 Deleting sent job messages from this chat...', {
+      reply_markup: persistentControlKeyboard,
+    });
+    const count = await clearSentChatMessages(progress.message_id);
+    await ctx.reply(`✅ <b>Cleaned!</b> Deleted ${count} job messages from chat and reset delivery queue.`, {
+      parse_mode: 'HTML',
+      reply_markup: persistentControlKeyboard,
+    });
+  };
+
+  bot.command('clear', handleClear);
+  bot.hears('🧹 Clear Chat', handleClear);
+
+  // ── /restart ───────────────────────────────────────────────────────────────
+  const handleRestart = async (ctx: Context) => {
+    const progress = await ctx.reply('🔄 Wiping database and cleaning chat for fresh restart...', {
+      reply_markup: persistentControlKeyboard,
+    });
+    const count = await clearSentChatMessages(progress.message_id);
+
+    // Wipe all processing and evaluation records
+    db.delete(evaluations).run();
+    db.delete(jobs).run();
+    db.delete(feedback).run();
+    db.delete(sourceMessages).run();
+    appStateRepo.delete('checkpoint:telegram-web:freelance_ethio');
+
+    await ctx.reply(
+      `✅ <b>Full Reset Complete!</b>\n\n` +
+      `• Deleted ${count} previous job alerts from this chat\n` +
+      `• Wiped stored messages, evaluations, and job history\n` +
+      `• Reset channel checkpoint to 0\n\n` +
+      `Ready! Click <b>📥 Fetch 50 Recent Jobs</b> below to scan freshly.`,
+      { parse_mode: 'HTML', reply_markup: persistentControlKeyboard },
+    );
+  };
+
+  bot.command('restart', handleRestart);
+  bot.hears('🔄 Wipe & Restart', handleRestart);
+
+  // ── /fetch50 — On-demand 50 recent posts fetcher ───────────────────────────
+  const handleFetch50 = async (ctx: Context) => {
+    await ctx.reply('⏳ <b>Fetching and screening the 50 most recent posts from @freelance_ethio...</b>', {
+      parse_mode: 'HTML',
+      reply_markup: persistentControlKeyboard,
+    });
+
+    try {
+      const channelUrl = config.TELEGRAM_CHANNEL_URL ?? 'https://t.me/s/freelance_ethio';
+      const adapter = new TelegramWebAdapter(channelUrl, db);
+      const rawPosts = await adapter.fetchRecent(50);
+
+      const activeProfileRow = profileRepo.getActive();
+      if (!activeProfileRow) {
+        await ctx.reply('⚠️ No active profile found.', {
+          reply_markup: persistentControlKeyboard,
+        });
+        return;
+      }
+      const profile = profileFromDb(activeProfileRow);
+
+      let matchesCount = 0;
+      let evaluatedCount = 0;
+
+      for (const raw of rawPosts) {
+        evaluatedCount++;
+        // Ensure message exists in database
+        const ingestRes = await ingestionService.ingestMessage(raw);
+        const existingMsg =
+          ingestRes.message ??
+          messagesRepo.findBySourceAndExternalId(raw.sourceId, raw.externalId);
+
+        if (!existingMsg) {
+          logger.warn({ raw }, 'Could not resolve message row for on-demand fetch');
+          continue;
+        }
+
+        const msgId = existingMsg.id;
+
+        // Evaluate with strict tech title filter
+        const evalRes = evaluate(raw.text, profile);
+
+        if (evalRes.verdict === 'match') {
+          matchesCount++;
+          // Queue notification
+          const notif = notificationsRepo.queue(
+            evaluationsRepo.insert({
+              messageId: msgId,
+              profileVersion: profile.version,
+              ruleEngineVersion: evalRes.ruleEngineVersion,
+              isJobAnnouncement: evalRes.isJobAnnouncement,
+              extractedTitle: evalRes.extracted.title,
+              extractedCompany: evalRes.extracted.company,
+              extractedLocation: evalRes.extracted.location,
+              extractedWorkMode: evalRes.extracted.workMode,
+              extractedEmploymentType: evalRes.extracted.employmentType,
+              extractedDeadline: evalRes.extracted.deadline,
+              extractedApplyMethod: evalRes.extracted.applyMethod,
+              matchedSkills: evalRes.matchedSkills,
+              matchedRoles: evalRes.matchedRoles,
+              missingInfo: evalRes.missingInfo,
+              triggeredExclusions: evalRes.triggeredExclusions,
+              score: evalRes.score,
+              verdict: evalRes.verdict,
+              matchReasons: evalRes.matchReasons,
+            }).id,
+          );
+
+          const { text, keyboard } = formatVerbatim(raw.text, raw.links, notif.id);
+
+          try {
+            const sent = await bot.api.sendMessage(ownerChatId, text, {
+              parse_mode: 'HTML',
+              reply_markup: keyboard,
+            });
+            notificationsRepo.updateStatus(notif.id, 'delivered', {
+              telegramMessageId: sent.message_id,
+            });
+          } catch (err) {
+            logger.warn({ err }, 'Failed to deliver on-demand notification');
+          }
+        }
+      }
+
+      await ctx.reply(
+        `✅ <b>Scan Complete!</b>\n\n` +
+        `• Evaluated: <b>${evaluatedCount}</b> recent channel posts\n` +
+        `• Qualified Tech Jobs: <b>${matchesCount}</b> delivered to your chat\n` +
+        `• Filter Rule: Strict Technical Title only`,
+        {
+          parse_mode: 'HTML',
+          reply_markup: persistentControlKeyboard,
+        },
+      );
+    } catch (err) {
+      logger.error({ err }, 'Error during on-demand 50 fetch');
+      await ctx.reply('⚠️ Error fetching posts from channel. Please check your internet connection and try again.', {
+        reply_markup: persistentControlKeyboard,
+      });
+    }
+  };
+
+  bot.command('fetch50', handleFetch50);
+  bot.hears('📥 Fetch 50 Recent Jobs', handleFetch50);
 
   // ── /help ──────────────────────────────────────────────────────────────────
   bot.command('help', async (ctx) => {
     const text =
       `📖 <b>AfriPersonal Help & Usage</b>\n\n` +
-      `<b>How Job Ingestion Works:</b>\n` +
-      `1. <b>Forward posts:</b> Forward any post from a job channel directly to this bot.\n` +
-      `2. <b>Paste text:</b> Send or paste raw job announcements into this chat.\n` +
-      `3. <b>Command:</b> Use <code>/import &lt;job text&gt;</code> to import.\n\n` +
-      `<b>The Matching Engine:</b>\n` +
-      `• 100% deterministic rule-based evaluation (no external LLMs or data leaks).\n` +
-      `• Normalizes technologies and aliases (e.g. Node.js, React, TypeScript).\n` +
-      `• Filters out promos, ads, and deal-breakers.\n` +
-      `• Explains exact reasons why an opportunity qualifies.\n\n` +
-      `<b>Operational Commands:</b>\n` +
-      `/status — Operational health and queue depths\n` +
-      `/profile — Active career preferences and criteria\n` +
-      `/matches — Recent matched evaluations\n` +
-      `/sources — Monitored source adapters\n` +
-      `/stats — Aggregated metrics\n` +
-      `/pause — Temporarily halt notifications\n` +
-      `/resume — Unpause notifications`;
+      `<b>100% Automated Job Watcher:</b>\n` +
+      `• <b>Channel Polling:</b> Automatically monitors @freelance_ethio every 15 minutes.\n` +
+      `• <b>Zero Manual Work:</b> You never need to browse channels or copy/paste posts.\n` +
+      `• <b>Strict Title Filter:</b> Only genuine tech titles (Developer, Software, Engineer, Fullstack, Mobile, DevOps, UI/UX, etc.) are matched.\n` +
+      `• <b>Verbatim Delivery:</b> Sends the exact original post with direct link to your DM.\n\n` +
+      `<b>Commands:</b>\n` +
+      `• /clear — Delete all sent job alert messages from this chat\n` +
+      `• /restart — Fully wipe data, clear messages, and restart clean\n` +
+      `• /status — Operational health and queue depths\n` +
+      `• /profile — Active career preferences and criteria\n` +
+      `• /matches — Recent matched evaluations\n` +
+      `• /stats — Aggregated metrics\n` +
+      `• /pause — Temporarily halt notifications\n` +
+      `• /resume — Unpause notifications`;
     await ctx.reply(text, { parse_mode: 'HTML' });
   });
 
   // ── /status ────────────────────────────────────────────────────────────────
-  bot.command('status', async (ctx) => {
+  const handleStatus = async (ctx: Context) => {
     const paused = appStateRepo.get('paused') === 'true';
     const pendingCount = messagesRepo.countByStatus('pending');
     const pendingNotifs = notificationsRepo.getPending().length;
@@ -120,14 +306,22 @@ export function createBot(
       `• <b>Queued notifications:</b> ${pendingNotifs}\n\n` +
       `<b>Configured Sources:</b>\n${sourcesSummary || '  None'}`;
 
-    await ctx.reply(text, { parse_mode: 'HTML' });
-  });
+    await ctx.reply(text, {
+      parse_mode: 'HTML',
+      reply_markup: persistentControlKeyboard,
+    });
+  };
+
+  bot.command('status', handleStatus);
+  bot.hears('📊 Status', handleStatus);
 
   // ── /sources ───────────────────────────────────────────────────────────────
   bot.command('sources', async (ctx) => {
     const list = sourcesRepo.findAll();
     if (list.length === 0) {
-      await ctx.reply('No sources configured.');
+      await ctx.reply('No sources configured.', {
+        reply_markup: persistentControlKeyboard,
+      });
       return;
     }
 
@@ -144,30 +338,39 @@ export function createBot(
 
     await ctx.reply(`📡 <b>Configured Sources:</b>\n\n${items}`, {
       parse_mode: 'HTML',
+      reply_markup: persistentControlKeyboard,
     });
   });
 
   // ── /profile ───────────────────────────────────────────────────────────────
-  bot.command('profile', async (ctx) => {
+  const handleProfile = async (ctx: Context) => {
     const activeRow = profileRepo.getActive();
     if (!activeRow) {
-      await ctx.reply('No active profile found in database.');
+      await ctx.reply('⚠️ No active profile found.', {
+        reply_markup: persistentControlKeyboard,
+      });
       return;
     }
 
     const p = profileFromDb(activeRow);
     const text =
-      `👤 <b>Active Profile: ${p.name}</b> (v${p.version})\n\n` +
-      `🎯 <b>Target Titles:</b>\n  ${p.targetTitles.join(', ') || 'Any'}\n\n` +
-      `🔑 <b>Required Skills:</b>\n  ${p.requiredSkills.join(', ') || 'None'}\n\n` +
-      `✨ <b>Preferred Skills:</b>\n  ${p.preferredSkills.join(', ') || 'None'}\n\n` +
-      `💼 <b>Employment Types:</b>\n  ${p.employmentTypes.join(', ') || 'Any'}\n\n` +
-      `🌐 <b>Work Modes:</b>\n  ${p.workArrangements.join(', ') || 'Any'}\n\n` +
-      `⛔ <b>Deal-Breakers:</b>\n  ${p.dealBreakers.join(', ') || 'None'}\n\n` +
+      `👤 <b>Active Profile: ${p.name} (v${p.version})</b>\n\n` +
+      `🎯 <b>Target Titles:</b>\n  ${p.targetTitles.join(', ')}\n\n` +
+      `🔑 <b>Required Skills:</b>\n  ${p.requiredSkills.join(', ')}\n\n` +
+      `✨ <b>Preferred Skills:</b>\n  ${p.preferredSkills.join(', ')}\n\n` +
+      `💼 <b>Employment Types:</b>\n  ${p.employmentTypes.join(', ')}\n\n` +
+      `🌐 <b>Work Modes:</b>\n  ${p.workArrangements.join(', ')}\n\n` +
+      `⛔ <b>Deal-Breakers:</b>\n  ${p.dealBreakers.join(', ')}\n\n` +
       `📊 <b>Notification Threshold:</b> ${p.minScoreThreshold}/100`;
 
-    await ctx.reply(text, { parse_mode: 'HTML' });
-  });
+    await ctx.reply(text, {
+      parse_mode: 'HTML',
+      reply_markup: persistentControlKeyboard,
+    });
+  };
+
+  bot.command('profile', handleProfile);
+  bot.hears('👤 Profile', handleProfile);
 
   // ── /matches ───────────────────────────────────────────────────────────────
   bot.command('matches', async (ctx) => {
@@ -350,9 +553,44 @@ export function createBot(
     await handleIngestText(ctx, ctx.message.text);
   });
 
-  // ── Inline Feedback Callback Queries ───────────────────────────────────────
+  // ── Inline Feedback & Action Callback Queries ─────────────────────────────
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data;
+
+    if (data === 'action:fetch50') {
+      await ctx.answerCallbackQuery({ text: 'Starting 50 post scan...' });
+      await handleFetch50(ctx);
+      return;
+    }
+
+    // Handle button actions: Clear
+    if (data === 'action:clear') {
+      await ctx.answerCallbackQuery({ text: 'Clearing messages...' });
+      const count = await clearSentChatMessages(ctx.callbackQuery.message?.message_id);
+      await ctx.reply(`✅ Deleted ${count} job messages from chat.`, {
+        parse_mode: 'HTML',
+        reply_markup: persistentControlKeyboard,
+      });
+      return;
+    }
+
+    // Handle button actions: Restart
+    if (data === 'action:restart') {
+      await ctx.answerCallbackQuery({ text: 'Wiping database and resetting...' });
+      const count = await clearSentChatMessages(ctx.callbackQuery.message?.message_id);
+      db.delete(evaluations).run();
+      db.delete(jobs).run();
+      db.delete(feedback).run();
+      db.delete(sourceMessages).run();
+      appStateRepo.delete('checkpoint:telegram-web:freelance_ethio');
+
+      await ctx.reply(
+        `✅ <b>Reset Complete!</b> Cleared ${count} messages and wiped database. Ready for a clean start.`,
+        { parse_mode: 'HTML', reply_markup: persistentControlKeyboard },
+      );
+      return;
+    }
+
     if (!data.startsWith('feedback:')) return;
 
     const [, notifIdStr, rating] = data.split(':');

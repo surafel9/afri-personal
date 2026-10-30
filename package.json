@@ -15,7 +15,8 @@
     "db:migrate": "tsx src/database/migrate-cli.ts",
     "db:seed": "tsx src/database/seed.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "dry-run": "tsx scripts/dry-run.ts"
   },
   "keywords": [
     "telegram",

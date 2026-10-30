@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+// Automatically load .env file if available (Node >= 20.6)
+try {
+  if (typeof process.loadEnvFile === "function") {
+    process.loadEnvFile();
+  }
+} catch {
+  // If .env file does not exist, ignore and rely on environment variables
+}
+
 const envSchema = z.object({
   BOT_TOKEN: z.string().min(1, "BOT_TOKEN is required"),
   OWNER_CHAT_ID: z
@@ -21,6 +30,16 @@ const envSchema = z.object({
     .default("90")
     .transform((v) => parseInt(v, 10))
     .pipe(z.number().int().min(1)),
+  // ── Channel polling ────────────────────────────────────────────────────────
+  // Public Telegram channel preview URL to poll for job posts.
+  // Leave empty to disable automated polling (manual import only).
+  TELEGRAM_CHANNEL_URL: z.string().url().optional(),
+  // How often to poll the channel, in milliseconds. Default: 15 minutes.
+  POLLING_INTERVAL_MS: z
+    .string()
+    .default("900000")
+    .transform((v) => parseInt(v, 10))
+    .pipe(z.number().int().min(60000)),
 });
 
 function loadConfig() {

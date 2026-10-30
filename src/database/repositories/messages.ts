@@ -62,6 +62,19 @@ export function createMessagesRepo(db: Db) {
         .get();
     },
 
+    findBySourceAndExternalId(sourceId: string, externalId: string): SourceMessage | undefined {
+      return db
+        .select()
+        .from(sourceMessages)
+        .where(
+          and(
+            eq(sourceMessages.sourceId, sourceId),
+            eq(sourceMessages.externalId, externalId),
+          ),
+        )
+        .get();
+    },
+
     findByHash(hash: string): SourceMessage[] {
       return db
         .select()

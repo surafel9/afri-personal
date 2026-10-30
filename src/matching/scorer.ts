@@ -8,6 +8,9 @@ import { normalizeText, resolveSkillAlias, extractSkillMentions } from './normal
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
+export const TECH_TITLE_REGEX =
+  /\b(software|developer|programmer|full-?stack|backend|frontend|web\s+dev(eloper)?|mobile|android|ios|flutter|react|node|python|golang|rust|devops|cloud|data\s+scientist|data\s+engineer|data\s+analyst|machine\s+learning|ai\s+engineer|artificial\s+intelligence|ui\/?ux|product\s+designer|systems?\s+admin|sysadmin|cybersecurity|network\s+engineer|database\s+admin|dba|embedded|firmware|hardware|pcb|computer\s+engineer|it\s+specialist|it\s+support|tech\s+lead|qa\s+engineer|test\s+engineer)\b/i;
+
 const DEFAULT_WEIGHTS = {
   requiredSkills: 40,
   preferredSkills: 20,
@@ -54,6 +57,32 @@ export function scoreMessage(
 
   const matchReasons: string[] = [];
   const triggeredExclusions: string[] = [];
+
+  // ── Hard gate 0: Strict Tech Title Whitelist ──────────────────────────────
+  // Whitelist-only: If title or first line matches TECH_TITLE_REGEX (or profile target titles),
+  // process it. Otherwise skip immediately.
+  const firstLine = normalizedText.split('\n')[0] ?? '';
+  const isTechTitle =
+    (extracted.title != null && TECH_TITLE_REGEX.test(extracted.title)) ||
+    TECH_TITLE_REGEX.test(firstLine) ||
+    profile.targetTitles.some(
+      (t) =>
+        (extracted.title != null && containsTerm(extracted.title.toLowerCase(), t.toLowerCase())) ||
+        containsTerm(firstLine.toLowerCase(), t.toLowerCase()),
+    );
+
+  if (!isTechTitle) {
+    const candidate = extracted.title || firstLine || 'unspecified';
+    return {
+      score: 0,
+      matchedSkills: [],
+      matchedRoles: [],
+      triggeredExclusions: [],
+      matchReasons: [`Skipped: Title '${candidate}' is not a recognized tech title`],
+      verdict: 'no_match',
+      missingInfo: !extracted.title ? ['Job title not specified'] : [],
+    };
+  }
 
   // ── Hard gate 1: Deal-breakers ─────────────────────────────────────────────
   for (const db of profile.dealBreakers) {
@@ -173,7 +202,7 @@ export function scoreMessage(
     const extractedTitleLower = extracted.title.toLowerCase();
     for (const targetTitle of profile.targetTitles) {
       const words = targetTitle.toLowerCase().split(/\s+/);
-      const matchCount = words.filter((w) => extractedTitleLower.includes(w)).length;
+      const matchCount = words.filter((w) => containsTerm(extractedTitleLower, w)).length;
       if (matchCount >= Math.ceil(words.length * 0.5)) {
         matchedRoles.push(extracted.title);
         roleBonus = 10;
@@ -183,9 +212,9 @@ export function scoreMessage(
     }
   }
 
-  // Also check role families against text
+  // Also check role families against text (using word-boundary matching)
   for (const family of profile.targetRoleFamilies) {
-    if (normalizedText.includes(family.toLowerCase())) {
+    if (containsTerm(normalizedText, family)) {
       if (!matchedRoles.includes(family)) matchedRoles.push(family);
     }
   }

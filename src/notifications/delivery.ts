@@ -12,7 +12,7 @@ import {
 } from '../database/repositories/notifications.js';
 import { createEvaluationsRepo } from '../database/repositories/evaluations.js';
 import { createMessagesRepo } from '../database/repositories/messages.js';
-import { formatNotification } from './formatter.js';
+import { formatNotification, formatVerbatim } from './formatter.js';
 import { logger } from '../observability/logger.js';
 
 export interface TelegramSender {
@@ -79,7 +79,19 @@ export class NotificationDeliveryService {
     }
 
     const sourceMsg = this.messagesRepo.findById(evaluation.messageId);
-    const { text, keyboard } = formatNotification(evaluation, notif.id, sourceMsg);
+
+    // Choose delivery format based on source:
+    //  - telegram-web adapter → verbatim (exact post text + link, per roadmap)
+    //  - manual / fixture → structured card with match details
+    const isWebAdapter = sourceMsg?.sourceId?.startsWith('telegram-web:') ?? false;
+
+    const { text, keyboard } = isWebAdapter
+      ? formatVerbatim(
+          sourceMsg?.originalText ?? '',
+          sourceMsg?.links ? (JSON.parse(sourceMsg.links) as string[]) : [],
+          notif.id,
+        )
+      : formatNotification(evaluation, notif.id, sourceMsg);
 
     this.notificationsRepo.updateStatus(notif.id, 'sending');
     this.notificationsRepo.incrementAttempt(notif.id);

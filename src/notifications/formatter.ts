@@ -2,6 +2,12 @@
  * formatter.ts
  * Formats match evaluations into Telegram messages using safe HTML escaping.
  * Includes inline keyboard markup for user feedback.
+ *
+ * Two delivery modes:
+ *  - formatNotification(): structured card with score, match reasons, metadata.
+ *    Used for manual imports and forwarded messages.
+ *  - formatVerbatim(): sends the exact original post text + original link.
+ *    Used for automated channel polling (telegram-web adapter).
  */
 
 import { InlineKeyboard } from 'grammy';
@@ -122,6 +128,44 @@ export function formatNotification(
   const text = parts.join('\n\n');
 
   // Inline feedback buttons
+  const keyboard = new InlineKeyboard()
+    .text('👍 Relevant', `feedback:${notificationId}:relevant`)
+    .text('👎 Not relevant', `feedback:${notificationId}:not_relevant`)
+    .text('💼 Applied', `feedback:${notificationId}:applied`);
+
+  return { text, keyboard };
+}
+
+// ── Verbatim delivery ─────────────────────────────────────────────────────────
+
+/**
+ * Format a notification as verbatim — the exact original post text plus the
+ * direct link back to the Telegram channel post.
+ *
+ * Used for automated telegram-web adapter matches, per the roadmap requirement:
+ * "the bot forwards the exact original post text without editing a single word."
+ *
+ * Telegram HTML parse_mode is used so the original text is shown as-is,
+ * but special characters are escaped to prevent broken markup.
+ */
+export function formatVerbatim(
+  rawText: string,
+  originalLinks: string[],
+  notificationId: number,
+): FormattedNotification {
+  const parts: string[] = [];
+
+  // The exact, unedited post text — HTML-escaped so it renders safely.
+  parts.push(escapeHtml(rawText));
+
+  // Direct link to the original post (first link if available).
+  if (originalLinks.length > 0) {
+    const firstLink = originalLinks[0]!;
+    parts.push(`🔗 <a href="${firstLink}">View original post</a>`);
+  }
+
+  const text = parts.join('\n\n');
+
   const keyboard = new InlineKeyboard()
     .text('👍 Relevant', `feedback:${notificationId}:relevant`)
     .text('👎 Not relevant', `feedback:${notificationId}:not_relevant`)
