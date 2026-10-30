@@ -1,39 +1,31 @@
 # AfriPersonal
 
-A private, single-user Telegram bot that filters job channel posts and delivers matching opportunities directly to your Telegram DMs using a deterministic rule engine.
+A private, single-user Telegram assistant that filters noisy job channels and delivers matching opportunities directly to your private chat using a fast, deterministic rule engine.
 
-## Features
+## The Problem
 
-- Zero AI Costs: Fast, explainable rule engine (<1ms evaluation) with no external LLMs or monthly API bills.
-- Smart Tech Normalization: Automatically recognizes skill and role variations (NodeJS, React.js, Flutter, SQL, TypeScript).
-- Duplicate Suppression: Detects reposted announcements using cryptographic hashes to prevent duplicate alerts.
-- Private and Secure: Single-owner verification ensures only your configured Telegram account can interact with the bot.
-- Interactive Alerts: Delivers matching jobs directly to your chat with apply links and feedback buttons (Relevant, Not relevant, Applied).
+Job channels on Telegram (such as Freelance Ethiopia and regional tech boards) publish dozens or hundreds of messages every day. Finding relevant opportunities manually is tedious and inefficient:
+
+- High Noise: Promotional advertisements, non-technical roles, and generic announcements clutter the feed.
+- Repost Fatigue: The same job listing is frequently reposted over days or weeks with minor text or formatting variations.
+- Wasted Time: Developers have to manually skim through hundreds of posts every day just to find the few opportunities that fit their specific niche.
+
+## The Solution
+
+AfriPersonal serves as an automated personal filter between noisy job channels and your private inbox:
+
+- Deterministic Matching: Evaluates opportunities locally in under 1 millisecond using rule-based scoring and skill alias normalization (e.g. NodeJS, React, Flutter, SQL, Python).
+- Repost Deduplication: Uses cryptographic text hashing to recognize reposted announcements, ensuring you are never alerted for the same job twice.
+- Verbatim Delivery: Delivers the exact, unedited original post text and direct application links straight to your private Telegram DM.
+- Zero AI Overhead: Operates with zero monthly API bills, no external LLM dependencies, and no network latency.
+- Single-Owner Security: Strict access controls ensure the bot only processes requests and delivers alerts to your verified Telegram user ID.
 
 ## Tech Stack
 
 - Runtime: Node.js 22 LTS (TypeScript, ESM)
-- Bot Framework: grammY
-- Database: SQLite via better-sqlite3 and Drizzle ORM
-- Testing: Vitest (136 automated tests)
-
-## Bot Commands
-
-- `/start` — Welcome message and instructions
-- `/status` — System health and queue status
-- `/profile` — View active matching preferences
-- `/matches` — View recent matched jobs
-- `/pause` / `/resume` — Pause or resume alert delivery
-- `/stats` — Processing volume and match statistics
-- `/import <text>` — Evaluate a job post manually
-
-## Development and Testing
-
-```bash
-npm test          # Run all 136 tests
-npm run typecheck # Strict TypeScript check
-npm run dev       # Hot-reload development mode
-```
+- Bot Framework: grammY (Telegram Bot API framework)
+- Database: SQLite with better-sqlite3 and Drizzle ORM
+- Testing: Vitest
 
 ## License
 
