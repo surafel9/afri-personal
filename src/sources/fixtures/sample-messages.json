@@ -1,0 +1,121 @@
+[
+  {
+    "id": "fixture-001",
+    "postedAt": "2026-10-20T08:15:00.000Z",
+    "text": "🚀 We are hiring a Senior Node.js Backend Developer!\n\nCompany: Shega Digital\nLocation: Remote (Anywhere in Africa)\nType: Full-time\n\nWe are a fast-growing Ethiopian tech company building the next generation of fintech products. We need a strong Node.js engineer to lead our API development.\n\n🔧 Requirements:\n- 4+ years Node.js experience\n- TypeScript (mandatory)\n- REST API design and GraphQL\n- PostgreSQL and Redis\n- Docker / AWS deployment experience\n- Experience with microservices\n\n💰 Salary: $2,500 – $3,500 / month USD (negotiable)\n\nApply: https://shegadigital.com/careers/senior-nodejs\nDeadline: November 10, 2026",
+    "links": ["https://shegadigital.com/careers/senior-nodejs"],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-002",
+    "postedAt": "2026-10-20T09:30:00.000Z",
+    "text": "👨‍💻 Full-Stack Developer Needed — Remote\n\nRole: Mid-Level Full-Stack Engineer\nStack: React + Node.js\nEmployment: Contract (6 months, renewable)\nLocation: 100% Remote — open to East Africa timezone\n\nAbout the role:\nWe are building a logistics management platform for East African SMEs. You will own features end-to-end — from React components to API design.\n\nTech:\n✅ React 18+ with TypeScript\n✅ Node.js / Express or Fastify\n✅ MongoDB or PostgreSQL\n✅ REST APIs\n\nNice to have:\n- Next.js experience\n- Mobile experience (React Native)\n\nRate: $25–$40/hr USD\nContact: jobs@logixea.com or DM @logixea_hr\nApply by: Oct 30, 2026",
+    "links": [],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-003",
+    "postedAt": "2026-10-20T10:00:00.000Z",
+    "text": "ማስታወቂያ: አዲሱ የኢትዮጵያ ሶፍትዌር ምህዳር ዝርዝር ታትሟል!\n\nየኢትዮጵያ ሶፍትዌር ምህዳር ዓመታዊ ሪፖርት 2026 ዛሬ ታትሟል። ሪፖርቱ ሀበሻ.ኮም ቦታ ይገኛል። ሁሉም ሰው ማንበብ ይችላሉ።\n\nሪፖርቱ የሚያካትተው:\n- ምን ያህል ዕጩ ሰራተኞች አሉ\n- ለምን ዓይነት ክህሎቶች ፍላጎት ይኖራቸዋል\n- ሳምንታዊ ደሞዝ ዋጋ\n\nለበለጠ መረጃ: https://habeshajobs.com/report2026",
+    "links": ["https://habeshajobs.com/report2026"],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-004",
+    "postedAt": "2026-10-20T11:45:00.000Z",
+    "text": "TypeScript / React Frontend Developer\n\n📍 Location: Hybrid – Addis Ababa (2 days/week in office) + Remote\n🕐 Type: Full-time\n💼 Company: Kifiya Financial Technology\n\nWe are Kifiya, one of Ethiopia's leading fintech companies (we power mBirr and various payment solutions). We are expanding our engineering team.\n\nWhat you'll work on:\n- Customer-facing React web application\n- Internal admin dashboards\n- Integration with our Node.js microservices backend\n\nRequirements:\n• 3+ years React experience\n• TypeScript (required)\n• CSS/Tailwind, responsive design\n• REST API integration\n• Experience with state management (Redux / Zustand / React Query)\n\nBonus:\n• Testing (Jest / Vitest / Cypress)\n• React Native for future mobile work\n\nSalary: Competitive (ETB + benefits)\nApply: https://kifiya.com/join\nDeadline: Nov 5",
+    "links": ["https://kifiya.com/join"],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-005",
+    "postedAt": "2026-10-20T12:00:00.000Z",
+    "text": "🎉 SPECIAL PROMOTION — Techno Mobile G85 Pro\n\nOnly 18,500 ETB! Limited stock!\n\nFeatures:\n- 6.7\" AMOLED display\n- 108 MP camera\n- 5000 mAh battery\n- 8GB RAM / 256GB storage\n\nOrder via Telegram: @techno_store_addis\nDelivery available in Addis, Dire Dawa, Bahir Dar\n\n⚡ First 20 orders get a FREE screen protector!",
+    "links": [],
+    "hasMedia": true
+  },
+  {
+    "id": "fixture-006",
+    "postedAt": "2026-10-20T13:15:00.000Z",
+    "text": "Software Engineer — Backend\n\nCompany: [Confidential startup — YC-backed, Series A]\nLocation: Remote (Africa preferred)\nLevel: Mid to Senior\n\nWe are building infrastructure for African cross-border payments. Our backend runs on Go and Node.js.\n\nYou'll be working on:\n- Payment processing pipelines\n- Financial data APIs\n- Webhook systems\n- High-availability distributed systems\n\nRequirements:\n→ Strong in Node.js OR Go\n→ Solid SQL (PostgreSQL)\n→ API design experience\n→ Understanding of financial systems a plus\n\nWhat we offer:\n→ Fully remote\n→ $2,000–$4,000/month depending on experience\n→ Equity\n→ Learning budget\n\nTo apply: Send your GitHub + a short note on what you've built to careers@[redacted].io",
+    "links": [],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-007",
+    "postedAt": "2026-10-20T14:00:00.000Z",
+    "text": "PHP Developer Wanted — Onsite Only\n\n📍 Location: Addis Ababa (Bole area), NO remote work\n💼 Type: Full-time\n💰 Salary: 15,000–20,000 ETB/month\n\nWe are looking for an experienced PHP developer to maintain and extend our existing web systems.\n\nRequirements:\n- 2+ years PHP experience\n- Laravel framework\n- MySQL database\n- Must be able to report to office daily\n- No remote work option\n\nContact: HR@company.et\nCall: 0911-XXXXXX",
+    "links": [],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-008",
+    "postedAt": "2026-10-20T15:30:00.000Z",
+    "text": "🎓 Junior Frontend Developer — Internship Program\n\nCompany: iCog Labs (AI Research Company, Addis Ababa)\nType: Internship / Entry Level (with possibility of full-time hire)\nDuration: 3 months\nLocation: Hybrid (Addis Ababa)\n\nWho we're looking for:\n- Fresh graduates or final-year students in CS/IT\n- Basic knowledge of HTML, CSS, JavaScript\n- Familiarity with React is a big plus\n- Willingness to learn TypeScript\n\nYou'll work alongside senior engineers on real AI products.\n\nStipend: 5,000–8,000 ETB/month\nApplication: Send CV to intern@icog-labs.com\nSubject: Junior Frontend Internship\n\nDeadline: October 31, 2026",
+    "links": [],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-009",
+    "postedAt": "2026-10-20T16:00:00.000Z",
+    "text": "ዲጂታል ማርኬቲንግ ስፔሻሊስት ያስፈልጋል\n\nኩባንያ: ሀበሻ ሾፒንግ PLC\nቦታ: አዲስ አበባ\nሥራ: ሙሉ ጊዜ\n\nያስፈልጉ ብቃቶች:\n- በFacebook, Instagram, TikTok ማስታወቂያ ልምድ\n- ፎቶ እና ቪዲዮ ማርኬቲንግ\n- ግ.ኢ.ኤ. ቁጥር ወደ ሚሰጥ ሰው\n\nደሞዝ: ስምምነት ላይ\nለማመልከት: 0912-XXXXXX",
+    "links": [],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-010",
+    "postedAt": "2026-10-20T17:00:00.000Z",
+    "text": "🔥 Senior Node.js Developer — URGENT HIRE\n\nWe need a Node.js dev for a short-term project starting immediately.\n\nDetails:\n• Duration: 2–3 months contract\n• Remote (any timezone)\n• Node.js + Express + MongoDB\n• TypeScript preferred\n• API integrations (third-party payment APIs)\n\n💰 Rate: Negotiable based on experience\n\nIf interested, send your portfolio/GitHub to: @devhirebot on Telegram\n\nFast response guaranteed.",
+    "links": [],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-011",
+    "postedAt": "2026-10-21T08:00:00.000Z",
+    "text": "🚀 We are hiring a Senior Node.js Backend Developer!\n\nCompany: Shega Digital (Ethiopia's leading tech media & digital agency)\nLocation: Remote\nType: Full-time\n\nWe need a strong Node.js backend engineer to join our growing product team.\n\nRequirements:\n- 4+ years Node.js\n- TypeScript\n- REST API and GraphQL\n- PostgreSQL and Redis\n- AWS or similar cloud\n\n💰 Salary: $2,500–$3,500 USD/month\n\nHow to apply: https://shegadigital.com/careers/senior-nodejs\nApplication closes: November 10, 2026\n\n(Repost — please share widely! 🙏)",
+    "links": ["https://shegadigital.com/careers/senior-nodejs"],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-012",
+    "postedAt": "2026-10-21T09:30:00.000Z",
+    "text": "Developer needed for a project\n\nLooking for someone to help build an app.\n- Web or mobile\n- Should know JavaScript\n- Will pay\n\nContact on Telegram: @abebe_techie",
+    "links": [],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-013",
+    "postedAt": "2026-10-21T10:00:00.000Z",
+    "text": "React Native Developer — Freelance Project\n\nWe are building a ride-hailing app for the Ethiopian market.\n\nProject:\n- React Native (cross-platform iOS + Android)\n- Google Maps integration\n- Real-time tracking (WebSockets)\n- Node.js backend (already built)\n\nDuration: 4–6 months\nBudget: $3,000–$5,000 total (negotiable)\nLocation: Remote, but Ethiopian timezone preferred\n\nTo apply: share your portfolio and previous React Native apps to freelance@rideet.com",
+    "links": [],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-014",
+    "postedAt": "2026-10-21T11:00:00.000Z",
+    "text": "💼 Data Engineer — Senior Level\n\nCompany: Safaricom Ethiopia (Telebirr team)\nLocation: Addis Ababa (onsite) + occasional remote\nType: Full-time permanent\n\nResponsibilities:\n- Build and maintain data pipelines\n- Work with Kafka, Spark, Airflow\n- Python and SQL required\n- Experience with dbt a bonus\n\nSalary: Competitive + excellent benefits (medical, pension, bonus)\n\nApply via: https://safaricom.et/careers\nRef: DE-2026-110",
+    "links": ["https://safaricom.et/careers"],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-015",
+    "postedAt": "2026-10-21T13:00:00.000Z",
+    "text": "አስፈሪ ቅናሽ! የስልክ ኬዝ ለሁሉም ሞዴሎች ✨\n\nዋጋ ከ 150 ብር ጀምሮ!\n- iPhone 13, 14, 15 ተጣጣሚ\n- Samsung Galaxy A series\n- Tecno Camon series\n- Infinix Hot series\n\nለማ주문ト: @mobile_accessories_et\nACCESSORIES_ET ቤት — አዲስ አበባ, ቦሌ\n\n📦 ቤት ድረስ ያደርሳሉ!",
+    "links": [],
+    "hasMedia": true
+  },
+  {
+    "id": "fixture-016",
+    "postedAt": "2026-10-21T14:30:00.000Z",
+    "text": "Backend Engineer (Node.js / TypeScript) — Full-time Remote\n\nHiring for: Gebeya Inc. (Pan-African tech talent marketplace)\nLevel: Mid-Senior (3–6 years experience)\nLocation: Fully remote — open globally\n\nAbout us: Gebeya is Africa's leading talent marketplace connecting African developers with global opportunities.\n\nRole:\n- Design and build RESTful APIs\n- Node.js + TypeScript codebase\n- PostgreSQL + Redis\n- Integrate with payment APIs (Stripe, Flutterwave)\n- Write unit and integration tests\n- Code reviews and mentoring junior devs\n\nWe offer:\n✅ Competitive USD salary\n✅ 100% remote forever\n✅ Annual learning budget ($1,500)\n✅ Equipment stipend\n\nApply: https://gebeya.com/jobs/backend-engineer-2026\nDeadline: Rolling — apply early.",
+    "links": ["https://gebeya.com/jobs/backend-engineer-2026"],
+    "hasMedia": false
+  },
+  {
+    "id": "fixture-017",
+    "postedAt": "2026-10-21T16:00:00.000Z",
+    "text": "Senior Full-Stack Developer\n\nWe are looking for an experienced full-stack developer.\n\nSkills needed: JavaScript, React, Node.js\nExperience: 5+ years\nSalary: TBD\n\nSend CV to info@techcompany.com",
+    "links": [],
+    "hasMedia": false
+  }
+]

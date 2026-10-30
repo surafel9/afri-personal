@@ -1,0 +1,43 @@
+{
+  "name": "afri-personal",
+  "version": "0.1.0",
+  "description": "AfriPersonal: A private, single-user Telegram bot that ingests job posts and notifies you only about the ones that match your exact profile.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "tsx src/database/migrate-cli.ts",
+    "db:seed": "tsx src/database/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "telegram",
+    "job-matcher",
+    "bot",
+    "personal"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
+    "grammy": "^1.46.0",
+    "pino": "^10.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.6",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

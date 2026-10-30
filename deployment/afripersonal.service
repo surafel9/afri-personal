@@ -1,0 +1,35 @@
+[Unit]
+Description=AfriPersonal Telegram Job Matcher Service
+After=network.target
+
+[Service]
+Type=simple
+User=sinux
+WorkingDirectory=/home/sinux/Projects/personal/afri-personal
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=10s
+
+# Environment & Secrets
+EnvironmentFile=/home/sinux/Projects/personal/afri-personal/.env
+Environment=NODE_ENV=production
+
+# Graceful termination
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=afripersonal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/sinux/Projects/personal/afri-personal/data
+
+[Install]
+WantedBy=multi-user.target
+

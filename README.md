@@ -1,89 +1,363 @@
 # 🌍 AfriPersonal: The Smart Telegram Job Matcher
 
+A **private, single-user** Telegram bot that ingests job opportunities and notifies you only about the ones that match your exact career profile — using an explainable deterministic rule engine, official Telegram Bot API, and zero external LLMs or cloud subscriptions.
+
+---
+
 ## 📑 Table of Contents
-1. [What is this Project? (Explained Simply)](#1-what-is-this-project-explained-simply)
-2. [Why Build This? (Skills I Will Learn)](#2-why-build-this-skills-i-will-learn)
-3. [How it Works (The System Flow)](#3-how-it-works-the-system-flow)
-4. [The Tech Stack & Architecture](#4-the-tech-stack--architecture)
-5. [Database Schema (The Brain)](#5-database-schema-the-brain)
-6. [Environment Setup (.env)](#6-environment-setup-env)
+
+1. [Product Overview](#-product-overview)
+2. [What It Does NOT Do](#-what-it-does-not-do)
+3. [Architecture & Pipeline](#-architecture--pipeline)
+4. [Quick Setup](#-quick-setup)
+5. [Configuration Reference](#-configuration-reference)
+6. [Telegram Bot Commands](#-telegram-bot-commands)
+7. [Job Ingestion Guide](#-job-ingestion-guide)
+8. [Database Schema & Backup](#-database-schema--backup)
+9. [Production Deployment (systemd)](#-production-deployment-systemd)
+10. [Testing & Quality Assurance](#-testing--quality-assurance)
+11. [Project Structure](#-project-structure)
 
 ---
 
-## 1. What is this Project? (Explained Simply)
+## 💡 Product Overview
 
-Imagine you are looking for gold in a fast-moving river. The river brings 1,000 rocks a day, and it's exhausting to check every single one. 
+Job channels in Telegram (like Afriwork / Freelance Ethiopia) post dozens or hundreds of messages daily: a mix of relevant roles, irrelevant positions, duplicated announcements, commercial ads, and uninformative snippets.
 
-**AfriPersonal** is a robot you build to sit by the river for you. 
-1. You tell the robot: *"I only want gold rocks, and they must be shaped like a square."*
-2. The robot watches the river 24/7. 
-3. It immediately throws away the mud and regular rocks.
-4. When it finds a shiny rock, it uses a magnifying glass (AI) to check if it's perfectly square.
-5. If it's a match, it puts the rock straight into your pocket.
-
-**In tech terms:** It is a personal application that reads 1,000+ daily messages from noisy Telegram job channels. It throws away irrelevant jobs using keywords, uses AI to perfectly understand if a job matches your exact niche, and sends the perfect jobs straight to your Telegram DMs.
-
----
-
-## 2. Why Build This? (Skills I Will Learn)
-
-This isn't just a basic tutorial project; it solves a real-world data and automation problem. By building this, I will master:
-
-*   **System Architecture:** How to build a system where a background worker and a web dashboard communicate using the same database.
-*   **Telegram MTProto (`gramjs`):** How to programmatically control a Telegram user account (Userbot) rather than just a simple Bot API.
-*   **Prompt Engineering & AI APIs:** How to talk to Large Language Models (LLMs like Groq/Llama3) programmatically and force them to return clean, structured JSON data.
-*   **Database Design (Prisma / SQL):** How to design a multi-user schema where one system can evaluate data against many different user preferences at the same time.
-*   **Node.js / Express:** Building REST APIs to manage user configurations dynamically.
+**AfriPersonal** filters the noise for you:
+1. **Ingests** job announcements via official, ToS-compliant channels (direct forwarding or `/import`).
+2. **Deduplicates** reposted announcements using cryptographic hashes and job relation tracking.
+3. **Normalizes** tech skills, aliases (e.g. `NodeJS` ➔ `node.js`, `postgres` ➔ `postgresql`), work modes, and seniority.
+4. **Evaluates** posts against your profile deterministically with explainable scoring.
+5. **Notifies** your private Telegram chat with complete details, matched reasons, and missing info flags.
+6. **Collects feedback** (`👍 Relevant`, `👎 Not relevant`, `💼 Applied`) via inline buttons for future profile tuning.
 
 ---
 
-## 3. How it Works (The System Flow)
+## 🚫 What It Does NOT Do
 
-The system works in a continuous, automated loop:
-
-1. **The Catch:** The Telegram Worker sees a new message posted in `@ethio_job_channel`.
-2. **The Fetch:** The server looks into the database and pulls up my personal profile (my keywords and my custom AI prompt).
-3. **Stage 1 (The Bouncer):** The server checks if the job has basic words like "React" or "Developer". If no, it drops the message to save AI costs.
-4. **Stage 2 (The AI Recruiter):** The server sends the job text and my custom prompt to the Groq AI API. The AI reads the context to see if it's a true match.
-5. **The Delivery:** If the AI says `is_match: true`, the system forwards the job post and the AI's reasoning directly to my personal Telegram DM.
+- **No web UI or SaaS dashboard in v1** — Telegram is the full command & control interface.
+- **No external LLM calls** — 100% deterministic, explainable rules. Zero API bills, zero data leaks, microsecond execution.
+- **No auto-applying or messaging recruiters** — you maintain full agency.
+- **No automated scraping of third-party channels via user accounts** — avoids Telegram ToS violations and account ban risk (see [LATER.md](file:///home/sinux/Projects/personal/afri-personal/LATER.md)).
+- **No complex multi-service infrastructure** — single Node.js 22 LTS process with embedded SQLite (WAL mode).
 
 ---
 
-## 4. The Tech Stack & Architecture
+## 🏗️ Architecture & Pipeline
 
-The project is divided into 4 specific pieces that work together:
-
-### 🖥️ 1. The Frontend (Dashboard)
-*   **What it does:** A simple webpage where I can type in my keywords, write my AI prompt, and turn the bot on or off. 
-*   **Tech:** HTML, TailwindCSS, and basic JavaScript to send data to the backend.
-
-### ⚙️ 2. The Backend (Express API)
-*   **What it does:** A Node.js web server that receives the data from the Frontend Dashboard and saves it into the database. It handles the `GET`, `POST`, and `PUT` requests for my profile settings.
-*   **Tech:** Node.js, Express.js.
-
-### 🗄️ 3. The Database (PostgreSQL)
-*   **What it does:** The storage vault. It remembers my Telegram Chat ID, my target channels, my keywords, and my AI instructions.
-*   **Tech:** PostgreSQL managed by Prisma ORM.
-
-### 🤖 4. The Worker & AI (Telegram Bot / Groq)
-*   **What it does:** The engine running in the background. It connects to Telegram, listens for messages, filters them against the Database rules, calls the AI, and sends DMs.
-*   **Tech:** `gramjs` (Telegram connection), `axios` (API requests), and `Groq API` (Free AI).
+```
+  ┌────────────────────────────────────────────────────────┐
+  │                 Telegram Ingestion                     │
+  │  • User forwards channel posts to bot                  │
+  │  • User pastes text via /import command                │
+  │  • FixtureAdapter for testing & replay                 │
+  └──────────────────────────┬─────────────────────────────┘
+                             │
+                             ▼
+  ┌────────────────────────────────────────────────────────┐
+  │            Deduplication & Persistence                 │
+  │  • Unique constraint on (sourceId, externalId)         │
+  │  • SHA-256 normalized textHash comparison              │
+  │  • Links duplicates in SQLite `jobs` table             │
+  └──────────────────────────┬─────────────────────────────┘
+                             │
+                             ▼
+  ┌────────────────────────────────────────────────────────┐
+  │         Deterministic Rule Matching Engine             │
+  │  1. Text Normalization & Skill Alias Mapping           │
+  │  2. Job vs Promo vs News Detection                     │
+  │  3. Field Extraction (Title, Company, Mode, Deadlines) │
+  │  4. Hard Exclusion & Deal-Breaker Gates                │
+  │  5. Weighted Scoring (0–100) & Reasons Explanation     │
+  └──────────────────────────┬─────────────────────────────┘
+                             │
+                             ▼
+  ┌────────────────────────────────────────────────────────┐
+  │           Durable Notification Queue                   │
+  │  • Suppresses alerts for known duplicate jobs          │
+  │  • Rate-limit aware (respects 429 & retry_after)       │
+  │  • Bounded exponential backoff with jitter             │
+  │  • Crash recovery of pending / sending states          │
+  └──────────────────────────┬─────────────────────────────┘
+                             │
+                             ▼
+  ┌────────────────────────────────────────────────────────┐
+  │         Telegram Bot DM (Owner Chat Only)              │
+  │  • HTML-formatted notification with links              │
+  │  • Inline feedback: [👍 Relevant] [👎 Not] [💼 Applied]│
+  └────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 5. Database Schema (The Brain)
+## 🚀 Quick Setup
 
-We use a single `Watcher` table so the system knows exactly what to look for and where to send the results. 
+### Prerequisites
+- Node.js 22 LTS (`>= 22.0.0`)
+- A Telegram account and a bot token from [@BotFather](https://t.me/BotFather)
 
-```prisma
-model Watcher {
-  id               String   @id @default(uuid())
-  userName         String   // e.g., "My Profile"
-  targetChannel    String   // e.g., "@ethio_job_channel"
-  telegramChatId   String   // Where the bot sends the DM (e.g., "123456789")
-  keywords         String[] // e.g., ["react", "node", "frontend"]
-  customPrompt     String   // e.g., "I am a mid-level React dev..."
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-}
+```bash
+# 1. Clone the repository
+git clone <repo-url> afri-personal
+cd afri-personal
+
+# 2. Install dependencies
+npm install
+
+# 3. Configure environment
+cp .env.example .env
+```
+
+Edit `.env`:
+```env
+BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
+OWNER_CHAT_ID=123456789
+```
+
+> **How to get your `OWNER_CHAT_ID`:** Open Telegram and send `/start` to [@userinfobot](https://t.me/userinfobot). It will reply with your numeric ID.
+
+```bash
+# 4. Run database migrations
+npm run db:migrate
+
+# 5. Seed example profile & sources
+npm run db:seed
+
+# 6. Build and start
+npm run build
+npm start
+```
+
+For development with hot-reload:
+```bash
+npm run dev
+```
+
+---
+
+## ⚙️ Configuration Reference
+
+All settings are validated at boot with **Zod**:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `BOT_TOKEN` | ✅ Yes | — | Telegram Bot API token from [@BotFather](https://t.me/BotFather) |
+| `OWNER_CHAT_ID` | ✅ Yes | — | Numeric Telegram user ID of the bot owner (access control) |
+| `LOG_LEVEL` | No | `info` | Logging verbosity: `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
+| `DB_PATH` | No | `data/afripersonal.db` | Local SQLite database file path |
+| `NOTIFICATION_THRESHOLD` | No | `60` | Minimum score (0–100) to trigger a Telegram alert |
+| `DATA_RETENTION_DAYS` | No | `90` | Automatic retention cleanup period for old evaluated items |
+
+---
+
+## 🤖 Telegram Bot Commands
+
+AfriPersonal enforces **strict single-owner verification**. Commands or callback interactions from unauthorized users are immediately rejected and logged.
+
+| Command | Description |
+|---|---|
+| `/start` | Welcome message, system overview, and command cheat sheet |
+| `/help` | Detailed instructions on job forwarding, commands, and rules |
+| `/status` | Operational status: paused state, queue depths, source health, and errors |
+| `/sources` | Lists configured source adapters, ingestion methods, and last sync time |
+| `/profile` | Displays the active career preferences, required/preferred skills, and threshold |
+| `/matches` | Shows up to 5 recent qualified job opportunities and their top matching reasons |
+| `/stats` | Aggregated metrics: total messages processed, evaluated, skipped, and alerts queued |
+| `/pause` | Temporarily pauses job evaluation and notification delivery |
+| `/resume` | Resumes normal processing and notification delivery |
+| `/import <text>` | Manually imports and evaluates a job post immediately |
+
+---
+
+## 📥 Job Ingestion Guide
+
+In v1, job announcements enter AfriPersonal through two ToS-compliant methods:
+
+### Method 1: Forward from Any Channel (Recommended)
+1. In Telegram, browse any public or private channel you belong to (e.g. [@freelance_ethio](https://t.me/freelance_ethio)).
+2. Forward the post directly to your private AfriPersonal bot.
+3. The bot preserves post timestamps, extracts links, evaluates the opportunity, and responds immediately with the evaluation result.
+
+### Method 2: Direct Text / `/import`
+1. Copy any job listing text from email, Telegram, or web.
+2. Send: `/import <paste job listing text here>`
+3. Or simply paste the raw text directly into the bot chat.
+
+---
+
+## 🗄️ Database Schema & Backup
+
+AfriPersonal uses **better-sqlite3** with WAL mode enabled.
+
+### Key Tables
+- `sources`: Source configurations and last sync health.
+- `source_messages`: Raw messages with `textHash` (SHA-256) and unique `(sourceId, externalId)` constraint.
+- `profile`: Career profile versions (titles, skills, exclusions, weights).
+- `evaluations`: Deterministic matching results, scores, explanations, and extracted fields.
+- `jobs`: Canonical jobs with self-referencing duplicate tracking (`duplicateOfJobId`).
+- `notifications`: Delivery queue with status, attempt counters, and Telegram message IDs.
+- `feedback`: User ratings (`relevant`, `not_relevant`, `applied`).
+- `app_state`: Key-value store for checkpoints and runtime flags (e.g. `paused`).
+
+### Safe Backup & Restore Procedure
+
+SQLite's WAL mode allows safe live backups using the SQLite CLI:
+
+```bash
+# Safe live backup without stopping the service:
+sqlite3 data/afripersonal.db ".backup 'data/backup-$(date +%Y%m%d%H%M).db'"
+
+# Restore from backup:
+# 1. Stop the bot service:
+sudo systemctl stop afripersonal
+
+# 2. Replace the database:
+cp data/backup-202610291200.db data/afripersonal.db
+
+# 3. Restart the service:
+sudo systemctl start afripersonal
+```
+
+---
+
+## 🐧 Production Deployment (systemd)
+
+AfriPersonal is designed as a single long-running Linux service.
+
+### 1. Build the Application
+```bash
+npm run build
+```
+
+### 2. Configure systemd Service
+A production systemd unit is provided at `deployment/afripersonal.service`.
+
+Edit the file to match your username and directory paths:
+```ini
+[Unit]
+Description=AfriPersonal Telegram Job Matcher Service
+After=network.target
+
+[Service]
+Type=simple
+User=sinux
+WorkingDirectory=/home/sinux/Projects/personal/afri-personal
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=10s
+
+EnvironmentFile=/home/sinux/Projects/personal/afri-personal/.env
+Environment=NODE_ENV=production
+
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=afripersonal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/sinux/Projects/personal/afri-personal/data
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 3. Enable and Start
+```bash
+sudo cp deployment/afripersonal.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now afripersonal
+
+# Check status:
+sudo systemctl status afripersonal
+
+# View live operational logs:
+journalctl -u afripersonal -f
+```
+
+---
+
+## 🧪 Testing & Quality Assurance
+
+AfriPersonal includes a test suite covering the engine, database, parser, queue, and bot security:
+
+```bash
+# Run all tests
+npm test
+
+# Run type-checking
+npm run typecheck
+```
+
+### Test Suite Summary
+- **Normalizer & Aliases**: Tests canonical resolution for technology variations (`nodejs`, `react.js`, `ts`, `k8s`).
+- **Job Detector**: Tests detection heuristics against advertisements, Amharic-only announcements, and spam.
+- **Field Extractor**: Tests extraction of job titles, companies, locations, work modes, and deadlines.
+- **Scorer & Gate Rules**: Tests required skills presence, deal-breakers (`PHP`, `onsite only`), and score thresholds.
+- **Regression Suite**: Automated regression tests over 12 diverse benchmark listings.
+- **Ingestion & Deduplication**: Tests idempotent message insertion, duplicate suppression, and checkpoints.
+- **Notification Delivery**: Tests Telegram 429 rate limits, exponential backoff, retry caps, and HTML escaping.
+- **Bot Security**: Tests owner-only authorization and callback handling.
+
+---
+
+## 📁 Project Structure
+
+```
+afri-personal/
+├── deployment/
+│   └── afripersonal.service       # Production systemd service unit
+├── src/
+│   ├── main.ts                    # Main entry point & lifecycle management
+│   ├── config/
+│   │   └── index.ts               # Zod-validated environment config
+│   ├── observability/
+│   │   └── logger.ts              # Pino structured logger with secret redaction
+│   ├── database/
+│   │   ├── schema.ts              # Relational schema (Drizzle ORM)
+│   │   ├── client.ts              # SQLite client (better-sqlite3 + WAL)
+│   │   ├── migrate.ts             # Migration runner
+│   │   ├── seed.ts                # Idempotent seed script
+│   │   └── repositories/          # Type-safe repository layer
+│   │       ├── sources.ts
+│   │       ├── messages.ts
+│   │       ├── profile.ts
+│   │       ├── evaluations.ts
+│   │       ├── jobs.ts
+│   │       ├── notifications.ts
+│   │       ├── feedback.ts
+│   │       └── app-state.ts
+│   ├── matching/
+│   │   ├── types.ts               # Core domain models
+│   │   ├── normalizer.ts          # Normalization & canonical aliases
+│   │   ├── job-detector.ts        # Announcement vs promo heuristics
+│   │   ├── field-extractor.ts     # Deterministic regex field parser
+│   │   ├── scorer.ts              # Explainable rule-based scoring engine
+│   │   ├── engine.ts              # Evaluator facade
+│   │   └── fixtures/
+│   │       └── regression-dataset.ts
+│   ├── sources/
+│   │   ├── types.ts               # RawMessage & SourceAdapter contracts
+│   │   ├── manual-adapter.ts      # Manual / forwarded message adapter
+│   │   └── fixture-adapter.ts     # Realistic test data stream
+│   ├── pipeline/
+│   │   ├── ingestion.ts           # Ingestion pipeline & hash deduplication
+│   │   ├── coordinator.ts         # Crash recovery & orchestration
+│   │   └── retention.ts           # Automatic data pruning
+│   ├── notifications/
+│   │   ├── formatter.ts           # Safe HTML formatting & inline keyboards
+│   │   └── delivery.ts            # Reliable delivery with backoff & 429 handling
+│   └── bot/
+│       └── bot.ts                 # grammY bot with single-owner security
+├── NOTES.md                       # Architectural decisions & lessons learned
+├── LATER.md                       # Deferred capabilities (userbot risk analysis)
+├── .env.example
+├── package.json
+├── tsconfig.json
+└── vitest.config.ts
+```
