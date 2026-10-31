@@ -619,8 +619,9 @@ export function createBot(
         `✅ <b>Scan Complete!</b>\n\n` +
         `📡 <b>Target:</b> ${target === 'all' ? `🌐 All Channels (${targetsToScan.length})` : targetLabel}\n` +
         `• <b>Total Posts Evaluated:</b> ${totalEvaluated}\n` +
-        `• <b>Qualified Tech Jobs:</b> ${totalMatches} delivered to your chat\n` +
-        `• <b>Non-tech / Filtered:</b> ${totalEvaluated - totalMatches}\n` +
+        `• <b>Relevant:</b> ${totalMatches}` +
+        (totalMatches > 0 ? ' 🎯 (delivered to your chat)' : '') +
+        `\n• <b>Rejected:</b> ${totalEvaluated - totalMatches}\n` +
         `• <b>Filter Rule:</b> Strict Technical Title only`;
 
       if (targetsToScan.length > 1) {
@@ -751,14 +752,16 @@ export function createBot(
         )
         .get()?.count ?? 0;
 
-    const todayRejected =
+    const todayRejected = Math.max(
+      todayFetched - todayMatches,
       db
         .select({ count: sql<number>`count(*)` })
         .from(evaluations)
         .where(
           sql`date(${evaluations.evaluatedAt}, '+3 hours') = date('now', '+3 hours') and ${evaluations.verdict} != 'match'`,
         )
-        .get()?.count ?? 0;
+        .get()?.count ?? 0,
+    );
 
     // All-time metrics
     const totalRead =

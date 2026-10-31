@@ -86,8 +86,12 @@ async function main(): Promise<void> {
 
         let reportText: string;
         const totalNew = batchStats.totalNewPosts;
-        const rejected =
-          evalSummary.noMatch + evalSummary.skipped + evalSummary.excluded;
+        const matches = evalSummary.matches;
+        // Any new post that is not relevant is always counted as rejected
+        const rejected = Math.max(
+          totalNew - matches,
+          evalSummary.noMatch + evalSummary.skipped + evalSummary.excluded,
+        );
 
         if (totalNew === 0) {
           const channelNames = monitoredChannels.map((c) => c.name).join(', ');
