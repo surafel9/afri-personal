@@ -36,6 +36,7 @@ export class PipelineCoordinator {
   private appStateRepo: ReturnType<typeof createAppStateRepo>;
 
   private isRunning = false;
+  private isProcessing = false;
   private loopTimer: NodeJS.Timeout | null = null;
   private pollingIntervalMs: number;
   private retentionDays: number;
@@ -214,17 +215,33 @@ export class PipelineCoordinator {
   /**
    * Perform one complete iteration of evaluation + delivery queue.
    */
-  async runCycle(): Promise<void> {
-    const evalSummary = await this.processPendingMessages();
-    if (evalSummary.processed > 0) {
-      logger.info(evalSummary, 'Evaluated batch of pending messages');
+  async runCycle(): Promise<{
+    processed: number;
+    matches: number;
+    skipped: number;
+    excluded: number;
+    notificationsQueued: number;
+  }> {
+    if (this.isProcessing) {
+      return { processed: 0, matches: 0, skipped: 0, excluded: 0, notificationsQueued: 0 };
     }
-
-    if (this.deliveryService) {
-      const isPaused = this.appStateRepo.get('paused') === 'true';
-      if (!isPaused) {
-        await this.deliveryService.processQueue();
+    this.isProcessing = true;
+    try {
+      const evalSummary = await this.processPendingMessages();
+      if (evalSummary.processed > 0) {
+        logger.info(evalSummary, 'Evaluated batch of pending messages');
       }
+
+      if (this.deliveryService) {
+        const isPaused = this.appStateRepo.get('paused') === 'true';
+        if (!isPaused) {
+          await this.deliveryService.processQueue();
+        }
+      }
+
+      return evalSummary;
+    } finally {
+      this.isProcessing = false;
     }
   }
 

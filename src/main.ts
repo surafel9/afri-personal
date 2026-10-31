@@ -18,6 +18,7 @@ import { createDb } from './database/client.js';
 import { runMigrations } from './database/migrate.js';
 import { seedDatabase } from './database/seed.js';
 import { createProfileRepo } from './database/repositories/profile.js';
+import { createAppStateRepo } from './database/repositories/app-state.js';
 import { createBot } from './bot/bot.js';
 import { NotificationDeliveryService } from './notifications/delivery.js';
 import { PipelineCoordinator } from './pipeline/coordinator.js';
@@ -59,14 +60,54 @@ async function main(): Promise<void> {
 
   // 5. Initialize AdapterPoller if TELEGRAM_CHANNEL_URL is configured
   let poller: AdapterPoller | null = null;
+  const appStateRepo = createAppStateRepo(db);
+
   if (config.TELEGRAM_CHANNEL_URL) {
     const telegramWebAdapter = new TelegramWebAdapter(config.TELEGRAM_CHANNEL_URL, db);
+    const channelName =
+      config.TELEGRAM_CHANNEL_URL.split('/').pop() ?? 'freelance_ethio';
+
     poller = new AdapterPoller(db, [telegramWebAdapter], {
       intervalMs: config.POLLING_INTERVAL_MS,
+      onCycleComplete: async (stats) => {
+        // Run coordinator evaluation right away so pending messages are evaluated and delivered
+        const evalSummary = await coordinator.runCycle();
+        const isPaused = appStateRepo.get('paused') === 'true';
+
+        let reportText: string;
+        if (stats.newPosts === 0) {
+          reportText =
+            `⏱️ <b>15-Minute Scan Report</b>\n` +
+            `📡 <b>Channel:</b> @${channelName}\n\n` +
+            `• <b>New Posts:</b> 0\n` +
+            `• <b>Status:</b> All caught up (no new posts)`;
+        } else {
+          const rejected = evalSummary.skipped + evalSummary.excluded;
+          reportText =
+            `⏱️ <b>15-Minute Scan Report</b>\n` +
+            `📡 <b>Channel:</b> @${channelName}\n\n` +
+            `• <b>New Posts:</b> ${stats.newPosts}\n` +
+            `• <b>Relevant:</b> ${evalSummary.matches}` +
+            (evalSummary.matches > 0 ? ' 🎯 (alerted above)' : '') +
+            `\n• <b>Rejected:</b> ${rejected}`;
+        }
+
+        if (isPaused) {
+          reportText += '\n• <b>State:</b> ⏸️ PAUSED';
+        }
+
+        try {
+          await bot.api.sendMessage(config.OWNER_CHAT_ID, reportText, {
+            parse_mode: 'HTML',
+          });
+        } catch (err) {
+          logger.error({ err }, 'Failed to deliver 15-minute scan report to owner');
+        }
+      },
     });
     logger.info(
       { channelUrl: config.TELEGRAM_CHANNEL_URL, intervalMs: config.POLLING_INTERVAL_MS },
-      'Automated channel polling enabled',
+      'Automated channel polling enabled with 15-minute periodic scan reports',
     );
   } else {
     logger.info('TELEGRAM_CHANNEL_URL not set — running in manual import mode only');

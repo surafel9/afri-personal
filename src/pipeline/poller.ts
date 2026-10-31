@@ -27,12 +27,20 @@ export interface AdapterPollerOptions {
   intervalMs?: number;
   /** Jitter range in milliseconds (±). Default: 30_000 (30 seconds). */
   jitterMs?: number;
+  /** Optional callback invoked after each poll cycle completes */
+  onCycleComplete?: (stats: {
+    sourceId: string;
+    totalFetched: number;
+    newPosts: number;
+    duplicates: number;
+  }) => Promise<void> | void;
 }
 
 export class AdapterPoller {
   private readonly ingestionService: IngestionService;
   private readonly intervalMs: number;
   private readonly jitterMs: number;
+  private readonly onCycleComplete?: AdapterPollerOptions['onCycleComplete'];
 
   private isRunning = false;
   private timer: NodeJS.Timeout | null = null;
@@ -45,6 +53,7 @@ export class AdapterPoller {
     this.ingestionService = new IngestionService(db);
     this.intervalMs = opts?.intervalMs ?? 900_000;
     this.jitterMs = opts?.jitterMs ?? 30_000;
+    this.onCycleComplete = opts?.onCycleComplete;
   }
 
   /**
@@ -135,6 +144,22 @@ export class AdapterPoller {
           },
           'AdapterPoller: ingestion complete for adapter',
         );
+
+        if (this.onCycleComplete) {
+          try {
+            await this.onCycleComplete({
+              sourceId: result.sourceId,
+              totalFetched: result.totalFetched,
+              newPosts: result.insertedCount,
+              duplicates: result.duplicateCount,
+            });
+          } catch (callbackErr) {
+            logger.error(
+              { sourceId: adapter.sourceId, err: callbackErr },
+              'AdapterPoller: onCycleComplete callback failed',
+            );
+          }
+        }
       } catch (err) {
         // Never let one adapter's failure prevent others from running.
         logger.error(
