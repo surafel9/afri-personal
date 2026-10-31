@@ -73,7 +73,7 @@ async function main(): Promise<void> {
         // Run coordinator evaluation right away so pending messages are evaluated and delivered
         const evalSummary = await coordinator.runCycle();
         const isPaused = appStateRepo.get('paused') === 'true';
-        const reportsEnabled = appStateRepo.get('periodic_reports_enabled') === 'true';
+        const reportsEnabled = appStateRepo.get('periodic_reports_enabled') !== 'false';
 
         // When reports are turned OFF, only relevant job notifications are delivered above.
         // We skip sending the periodic 15-minute summary message.
@@ -196,10 +196,11 @@ async function main(): Promise<void> {
       );
       try {
         await bot.api.setMyCommands([
-          { command: 'start', description: 'Start & welcome' },
+          { command: 'start', description: 'Start & welcome menu' },
+          { command: 'reports', description: 'Toggle 15m scan reports' },
           { command: 'fetch50', description: 'Fetch recent 50 jobs' },
-          { command: 'status', description: 'Check status' },
-          { command: 'profile', description: 'View profile' },
+          { command: 'status', description: 'Check status & daily report' },
+          { command: 'profile', description: 'View career profile' },
           { command: 'clear', description: 'Clear chat' },
           { command: 'help', description: 'Help & instructions' },
         ]);

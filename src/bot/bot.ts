@@ -229,14 +229,25 @@ export function createBot(
         ? getStartActionText()
         : `${getWelcomeText()}\n\n${getStartActionText()}`;
 
+    const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
+    const menuKeyboard = new InlineKeyboard()
+      .text('⚡ Fetch Recent 50', 'action:fetch50')
+      .text(
+        reportsOn ? '⏱️ Reports: 🟢 ON' : '⏱️ Reports: 🔴 OFF',
+        reportsOn ? 'reports:off' : 'reports:on',
+      )
+      .row()
+      .text('📊 Status', 'action:status')
+      .text('🧹 Clear Chat', 'confirm:clear');
+
     const sentAction = ctx
       ? await ctx.reply(actionText, {
           parse_mode: 'HTML',
-          reply_markup: removeKeyboardMarkup,
+          reply_markup: menuKeyboard,
         })
       : await bot.api.sendMessage(chatId, actionText, {
           parse_mode: 'HTML',
-          reply_markup: removeKeyboardMarkup,
+          reply_markup: menuKeyboard,
         });
 
     return { photoMsgId, actionMsgId: sentAction.message_id };
@@ -488,7 +499,7 @@ export function createBot(
   // ── /reports — Toggle 15-minute periodic scan reports ──────────────────────
   const handleReports = async (ctx: Context) => {
     const textArg = ctx.message?.text?.split(' ')[1]?.toLowerCase();
-    let isEnabled = appStateRepo.get('periodic_reports_enabled') === 'true';
+    let isEnabled = appStateRepo.get('periodic_reports_enabled') !== 'false';
 
     if (textArg === 'on') {
       appStateRepo.set('periodic_reports_enabled', 'true');
@@ -524,7 +535,7 @@ export function createBot(
   // ── /status ────────────────────────────────────────────────────────────────
   const handleStatus = async (ctx: Context) => {
     const paused = appStateRepo.get('paused') === 'true';
-    const reportsOn = appStateRepo.get('periodic_reports_enabled') === 'true';
+    const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
 
     // Daily metrics (today)
     const todayFetched =
@@ -858,6 +869,12 @@ export function createBot(
     if (data === 'action:fetch50') {
       await ctx.answerCallbackQuery({ text: 'Starting 50 post scan...' });
       await handleFetch50(ctx);
+      return;
+    }
+
+    if (data === 'action:status') {
+      await ctx.answerCallbackQuery();
+      await handleStatus(ctx);
       return;
     }
 
