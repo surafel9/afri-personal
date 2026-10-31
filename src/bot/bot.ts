@@ -392,6 +392,15 @@ export function createBot(
 
         if (evalRes.verdict === 'match') {
           matchesCount++;
+          // Check if this post was already notified previously to avoid duplicate cards
+          const existingEval = evaluationsRepo.findByMessageId(msgId);
+          if (existingEval) {
+            const existingNotif = notificationsRepo.findByEvaluationId(existingEval.id);
+            if (existingNotif && existingNotif.status === 'delivered') {
+              continue; // Skip duplicate notification delivery
+            }
+          }
+
           // Queue notification
           const notif = notificationsRepo.queue(
             evaluationsRepo.insert({

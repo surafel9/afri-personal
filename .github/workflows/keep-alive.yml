@@ -13,3 +13,4 @@ jobs:
       - name: Ping Render Service Health
         run: |
           curl -s -f -I "https://afri-personal.onrender.com/" || true
+
