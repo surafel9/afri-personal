@@ -50,20 +50,22 @@ export function getWelcomeText(): string {
 
 export function getStartActionText(): string {
   return (
-    `⚡ <b>Job Watcher Active</b>\n\n` +
-    `Monitoring Ethiopian job channels for technical roles:\n` +
-    `• @freelance_ethio\n` +
-    `• @DagmawiBabiJobs (Technical)\n` +
-    `• @ethiojobsofficial\n` +
-    `• @qena_jobs\n\n` +
+    `⚡ <b>Automated Tech Job Watcher Active</b>\n\n` +
+    `📡 <b>Monitoring Channels (4):</b>\n` +
+    `• <b>@freelance_ethio</b> — Freelance & Tech Work\n` +
+    `• <b>@DagmawiBabiJobs</b> — Dedicated Tech & Engineering\n` +
+    `• <b>@ethiojobsofficial</b> — Official Ethiopian Opportunities\n` +
+    `• <b>@qena_jobs</b> — Qena Tech & Professional Jobs\n\n` +
+    `⏱️ <b>Auto-Scan:</b> Runs silently every 15 minutes\n` +
+    `🎯 <b>Filter:</b> Strict technical titles only (zero non-tech clutter)\n\n` +
     `<b>Commands:</b>\n` +
-    `• /fetch — Screen recent posts by channel or across all channels\n` +
-    `• /reports — Toggle 15-minute scan reports (ON/OFF)\n` +
-    `• /status — Check status, channel breakdown & feedback\n` +
-    `• /sources — View monitored channel details\n` +
-    `• /profile — View your profile\n` +
-    `• /clear — Clear chat history\n` +
-    `• /help — Help & instructions`
+    `• /fetch — Screen posts on-demand (50, 100, 150, 200)\n` +
+    `• /reports — Toggle 15m scan reports (ON/OFF)\n` +
+    `• /status — View today's stats, channels & feedback\n` +
+    `• /sources — Channel health & inspection\n` +
+    `• /profile — View your career target profile\n` +
+    `• /clear — Wipe chat clutter until the first message\n` +
+    `• /help — Full instructions & commands`
   );
 }
 
