@@ -11,6 +11,7 @@
  *   Optional: TELEGRAM_CHANNEL_URL, POLLING_INTERVAL_MS, LOG_LEVEL,
  *             DB_PATH, NOTIFICATION_THRESHOLD, DATA_RETENTION_DAYS
  */
+import http from 'node:http';
 import { config } from './config/index.js';
 import { logger } from './observability/logger.js';
 import { createDb } from './database/client.js';
@@ -74,7 +75,17 @@ async function main(): Promise<void> {
   // Start adapter poller (if configured)
   poller?.start();
 
-  // 6. Handle graceful shutdown
+  // 6. Start HTTP health server for cloud platforms (Render, etc.)
+  const port = process.env.PORT || 8080;
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', service: 'afripersonal' }));
+  });
+  server.listen(port, () => {
+    logger.info({ port }, 'Health server listening');
+  });
+
+  // 7. Handle graceful shutdown
   let isShuttingDown = false;
   const shutdown = async (signal: string) => {
     if (isShuttingDown) return;
@@ -82,6 +93,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'Shutdown signal received, closing resources...');
 
     try {
+      server.close();
       poller?.stop();
       coordinator.stop();
       await bot.stop();
