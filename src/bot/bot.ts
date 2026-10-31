@@ -314,7 +314,9 @@ export function createBot(
       }
     }
 
-    db.delete(notifications).run();
+    // Keep all notification records and feedback history in the DB;
+    // only reset the telegramMessageId reference since the messages were visually cleared in Telegram.
+    db.update(notifications).set({ telegramMessageId: null }).run();
 
     if (preservedIds.size === 0) {
       const { photoMsgId, actionMsgId } = await sendWelcomeMessage(chatId);
