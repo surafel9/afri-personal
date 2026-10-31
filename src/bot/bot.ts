@@ -277,8 +277,16 @@ export function createBot(
       ownerChatId,
       ctx,
     );
-    if (photoMsgId) appStateRepo.set('welcome_photo_id', String(photoMsgId));
+    if (photoMsgId) {
+      appStateRepo.set('welcome_photo_id', String(photoMsgId));
+      if (!appStateRepo.get('first_welcome_photo_id')) {
+        appStateRepo.set('first_welcome_photo_id', String(photoMsgId));
+      }
+    }
     appStateRepo.set('welcome_msg_id', String(actionMsgId));
+    if (!appStateRepo.get('first_welcome_msg_id')) {
+      appStateRepo.set('first_welcome_msg_id', String(actionMsgId));
+    }
   });
 
   async function clearAllChatMessages(
@@ -287,25 +295,40 @@ export function createBot(
   ): Promise<number> {
     const allNotifs = db.select().from(notifications).all();
     const idsToDelete = new Set<number>();
-    const welcomePhotoId = Number(appStateRepo.get('welcome_photo_id') ?? 0);
-    const welcomeMsgId = Number(appStateRepo.get('welcome_msg_id') ?? 0);
-    const preservedIds = new Set<number>();
-    if (welcomePhotoId) preservedIds.add(welcomePhotoId);
-    if (welcomeMsgId) preservedIds.add(welcomeMsgId);
 
+    const firstWelcomePhotoId = Number(
+      appStateRepo.get('first_welcome_photo_id') ??
+      appStateRepo.get('welcome_photo_id') ??
+      0,
+    );
+    const firstWelcomeMsgId = Number(
+      appStateRepo.get('first_welcome_msg_id') ??
+      appStateRepo.get('welcome_msg_id') ??
+      0,
+    );
+
+    const preservedIds = new Set<number>();
+    if (firstWelcomePhotoId > 0) preservedIds.add(firstWelcomePhotoId);
+    if (firstWelcomeMsgId > 0) preservedIds.add(firstWelcomeMsgId);
+
+    // The first message is the anchor. If not known, default to 2 (just above handshake message 1)
+    const firstMsgAnchor = preservedIds.size > 0 ? Math.min(...preservedIds) : 2;
+
+    // 1. Collect all notification telegram message IDs above the anchor
     for (const notif of allNotifs) {
       if (
         notif.telegramMessageId &&
+        notif.telegramMessageId > firstMsgAnchor &&
         !preservedIds.has(notif.telegramMessageId)
       ) {
         idsToDelete.add(notif.telegramMessageId);
       }
     }
 
-    // 2. Only delete messages strictly ABOVE the welcome message
-    // NEVER delete below welcomeMsgId, and NEVER delete down to 1
-    if (currentMsgId && welcomeMsgId > 0) {
-      for (let id = currentMsgId - 1; id > welcomeMsgId; id--) {
+    // 2. Clear ALL messages strictly between currentMsgId and the first message anchor
+    // This completely purges every intermediate message, report, and prompt, leaving only the first message
+    if (currentMsgId && currentMsgId > firstMsgAnchor) {
+      for (let id = currentMsgId; id > firstMsgAnchor; id--) {
         if (!preservedIds.has(id)) {
           idsToDelete.add(id);
         }
@@ -337,7 +360,11 @@ export function createBot(
 
     if (preservedIds.size === 0) {
       const { photoMsgId, actionMsgId } = await sendWelcomeMessage(chatId);
-      if (photoMsgId) appStateRepo.set('welcome_photo_id', String(photoMsgId));
+      if (photoMsgId) {
+        appStateRepo.set('first_welcome_photo_id', String(photoMsgId));
+        appStateRepo.set('welcome_photo_id', String(photoMsgId));
+      }
+      appStateRepo.set('first_welcome_msg_id', String(actionMsgId));
       appStateRepo.set('welcome_msg_id', String(actionMsgId));
     }
 
@@ -1143,21 +1170,14 @@ export function createBot(
     }
 
     if (data === 'confirm:clear' || data === 'action:clear') {
-      await ctx.answerCallbackQuery({ text: 'Conversation cleared' });
       const currentMsgId = ctx.callbackQuery.message?.message_id;
       const count = await clearAllChatMessages(ownerChatId, currentMsgId);
       try {
-        await ctx.editMessageText(
-          `🧹 <b>Chat cleared.</b> Removed ${count} job messages.\n\nYour active profile and channel watcher remain running.`,
-          { parse_mode: 'HTML' },
-        );
-      } catch {
-        await bot.api.sendMessage(
-          ownerChatId,
-          `🧹 <b>Chat cleared.</b> Removed ${count} job messages.`,
-          { parse_mode: 'HTML' },
-        );
-      }
+        await ctx.deleteMessage();
+      } catch {}
+      await ctx.answerCallbackQuery({
+        text: `🧹 Chat cleared! Everything removed until the first message (${count} messages).`,
+      });
       return;
     }
 
