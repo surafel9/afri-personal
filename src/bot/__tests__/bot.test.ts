@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { GrammyError } from 'grammy';
 import { createDb } from '../../database/client.js';
 import { runMigrations } from '../../database/migrate.js';
 import { createBot } from '../bot.js';
@@ -76,6 +77,29 @@ describe('Bot & Security Middleware', () => {
           },
         } as unknown as ReturnType<typeof prev>;
       }
+      if (method === 'sendPhoto') {
+        return {
+          ok: true,
+          result: {
+            message_id: 1,
+            date: Math.floor(Date.now() / 1000),
+            chat: { id: OWNER_ID, type: 'private' },
+            caption: (payload as { caption?: string })?.caption ?? '',
+            photo: [{ file_id: 'mock-photo-id', width: 100, height: 100 }],
+          },
+        } as unknown as ReturnType<typeof prev>;
+      }
+      if (method === 'sendSticker') {
+        return {
+          ok: true,
+          result: {
+            message_id: 1,
+            date: Math.floor(Date.now() / 1000),
+            chat: { id: OWNER_ID, type: 'private' },
+            sticker: { file_id: 'mock-sticker-id', width: 512, height: 512 },
+          },
+        } as unknown as ReturnType<typeof prev>;
+      }
       if (method === 'answerCallbackQuery') {
         return { ok: true, result: true } as unknown as ReturnType<typeof prev>;
       }
@@ -112,6 +136,45 @@ describe('Bot & Security Middleware', () => {
     expect(sent.text).toContain('Access denied');
   });
 
+  it('gracefully handles 403 Forbidden when an unauthorized user has blocked the bot', async () => {
+    const mockBotInfo = {
+      id: 888888888,
+      is_bot: true as const,
+      first_name: 'AfriPersonalBot',
+      username: 'afripersonal_bot',
+      can_join_groups: false,
+      can_read_all_group_messages: false,
+      supports_inline_queries: false,
+      can_connect_to_business: false,
+      has_main_web_app: false,
+    };
+
+    const bot = createBot('fake:token', OWNER_ID, db, {
+      botInfo: mockBotInfo as unknown as UserFromGetMe,
+    });
+
+    bot.api.config.use(async () => {
+      throw new GrammyError(
+        "Call to 'sendMessage' failed! (403: Forbidden: bot was blocked by the user)",
+        {
+          ok: false,
+          error_code: 403,
+          description: 'Forbidden: bot was blocked by the user',
+          parameters: {},
+        },
+        'sendMessage',
+        {},
+      );
+    });
+
+    await expect(
+      bot.handleUpdate({
+        update_id: 99,
+        message: createCommandMessage(99, '/start', STRANGER_ID),
+      }),
+    ).resolves.not.toThrow();
+  });
+
   it('allows owner to execute /start and /help', async () => {
     const { bot, sentMessages } = setupMockBot();
 
@@ -120,9 +183,13 @@ describe('Bot & Security Middleware', () => {
       message: createCommandMessage(2, '/start', OWNER_ID),
     });
 
-    expect(sentMessages.length).toBe(1);
-    const sent = sentMessages[0]?.payload as { text: string };
-    expect(sent.text).toContain('Welcome to AfriPersonal');
+    expect(sentMessages.length).toBeGreaterThanOrEqual(1);
+    const sent = sentMessages.find(
+      (m) =>
+        (m.payload as { text?: string; caption?: string })?.text?.includes('Welcome to AfriPersonal') ||
+        (m.payload as { text?: string; caption?: string })?.caption?.includes('Welcome to AfriPersonal'),
+    );
+    expect(sent).toBeDefined();
   });
 
   it('allows owner to check /profile and /status', async () => {
@@ -159,6 +226,60 @@ describe('Bot & Security Middleware', () => {
     expect(sentMessages[1]?.payload).toMatchObject({
       text: expect.stringContaining('Notifications resumed'),
     });
+  });
+
+  it('asks for confirmation on /clear and preserves welcome message when clearing conversation', async () => {
+    const { bot, sentMessages } = setupMockBot();
+
+    await bot.handleUpdate({
+      update_id: 1,
+      message: createCommandMessage(1, '/start', OWNER_ID),
+    });
+
+    const welcomeMsg = sentMessages.find(
+      (m) =>
+        (m.payload as { text?: string; caption?: string })?.text?.includes('Welcome to AfriPersonal') ||
+        (m.payload as { text?: string; caption?: string })?.caption?.includes('Welcome to AfriPersonal'),
+    );
+    expect(welcomeMsg).toBeDefined();
+
+    await bot.handleUpdate({
+      update_id: 2,
+      message: createCommandMessage(10, '/clear', OWNER_ID),
+    });
+
+    const prompt = sentMessages[sentMessages.length - 1]?.payload as { text: string };
+    expect(prompt.text).toContain('Are you sure');
+
+    await bot.handleUpdate({
+      update_id: 3,
+      callback_query: {
+        id: 'confirm-clear-1',
+        from: { id: OWNER_ID, is_bot: false, first_name: 'Owner' },
+        chat_instance: 'inst-1',
+        data: 'confirm:clear',
+        message: createCommandMessage(11, 'prompt', OWNER_ID),
+      },
+    });
+
+    const deleteCalls = sentMessages.filter(
+      (m) => m.method === 'deleteMessages' || m.method === 'deleteMessage',
+    );
+    expect(deleteCalls.length).toBeGreaterThan(0);
+
+    // Verify welcome message ID (1) was NOT passed to deleteMessages
+    for (const call of deleteCalls) {
+      if (call.method === 'deleteMessages') {
+        const payload = call.payload as { message_ids: number[] };
+        expect(payload.message_ids).not.toContain(1);
+      } else if (call.method === 'deleteMessage') {
+        const payload = call.payload as { message_id: number };
+        expect(payload.message_id).not.toBe(1);
+      }
+    }
+
+    const lastReply = sentMessages[sentMessages.length - 1]?.payload as { text: string };
+    expect(lastReply.text).toContain('Chat cleared');
   });
 
   it('records user feedback from callback query', async () => {

@@ -100,11 +100,29 @@ async function main(): Promise<void> {
   // 7. Start bot long polling
   logger.info('Starting Telegram bot long polling...');
   await bot.start({
-    onStart: (botInfo) => {
+    onStart: async (botInfo) => {
       logger.info(
         { username: botInfo.username, id: botInfo.id },
         'AfriPersonal bot is live and polling',
       );
+      try {
+        await bot.api.setMyCommands([
+          { command: 'start', description: 'Start & welcome' },
+          { command: 'fetch50', description: 'Fetch recent 50 jobs' },
+          { command: 'status', description: 'Check status' },
+          { command: 'profile', description: 'View profile' },
+          { command: 'clear', description: 'Clear chat' },
+          { command: 'help', description: 'Help & instructions' },
+        ]);
+        await bot.api.setMyDescription(
+          '👋 Welcome to AfriPersonal!\nYour automated personal technical job watcher for Ethiopian channels.',
+        );
+        await bot.api.setMyShortDescription(
+          'Automated technical job watcher for @freelance_ethio',
+        );
+      } catch (err) {
+        logger.warn({ err }, 'Failed to set Telegram bot commands menu');
+      }
     },
   });
 }

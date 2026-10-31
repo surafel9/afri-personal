@@ -4,7 +4,11 @@
  */
 
 import type { UserProfile, ExtractedFields, Verdict } from './types.js';
-import { normalizeText, resolveSkillAlias, extractSkillMentions } from './normalizer.js';
+import {
+  normalizeText,
+  resolveSkillAlias,
+  extractSkillMentions,
+} from './normalizer.js';
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
@@ -48,11 +52,16 @@ export function scoreMessage(
   missingInfo: string[];
 } {
   const weights = {
-    requiredSkills: profile.scoringWeights.requiredSkills ?? DEFAULT_WEIGHTS.requiredSkills,
-    preferredSkills: profile.scoringWeights.preferredSkills ?? DEFAULT_WEIGHTS.preferredSkills,
-    workArrangement: profile.scoringWeights.workArrangement ?? DEFAULT_WEIGHTS.workArrangement,
-    seniorityMatch: profile.scoringWeights.seniorityMatch ?? DEFAULT_WEIGHTS.seniorityMatch,
-    employmentType: profile.scoringWeights.employmentType ?? DEFAULT_WEIGHTS.employmentType,
+    requiredSkills:
+      profile.scoringWeights.requiredSkills ?? DEFAULT_WEIGHTS.requiredSkills,
+    preferredSkills:
+      profile.scoringWeights.preferredSkills ?? DEFAULT_WEIGHTS.preferredSkills,
+    workArrangement:
+      profile.scoringWeights.workArrangement ?? DEFAULT_WEIGHTS.workArrangement,
+    seniorityMatch:
+      profile.scoringWeights.seniorityMatch ?? DEFAULT_WEIGHTS.seniorityMatch,
+    employmentType:
+      profile.scoringWeights.employmentType ?? DEFAULT_WEIGHTS.employmentType,
   };
 
   const matchReasons: string[] = [];
@@ -66,8 +75,9 @@ export function scoreMessage(
     (extracted.title != null && TECH_TITLE_REGEX.test(extracted.title)) ||
     TECH_TITLE_REGEX.test(firstLine) ||
     profile.targetTitles.some(
-      (t) =>
-        (extracted.title != null && containsTerm(extracted.title.toLowerCase(), t.toLowerCase())) ||
+      t =>
+        (extracted.title != null &&
+          containsTerm(extracted.title.toLowerCase(), t.toLowerCase())) ||
         containsTerm(firstLine.toLowerCase(), t.toLowerCase()),
     );
 
@@ -78,7 +88,9 @@ export function scoreMessage(
       matchedSkills: [],
       matchedRoles: [],
       triggeredExclusions: [],
-      matchReasons: [`Skipped: Title '${candidate}' is not a recognized tech title`],
+      matchReasons: [
+        `Skipped: Title '${candidate}' is not a recognized tech title`,
+      ],
       verdict: 'no_match',
       missingInfo: !extracted.title ? ['Job title not specified'] : [],
     };
@@ -92,7 +104,9 @@ export function scoreMessage(
     }
   }
   if (triggeredExclusions.length > 0) {
-    matchReasons.push(`Excluded: triggered deal-breaker '${triggeredExclusions.join("', '")}'`);
+    matchReasons.push(
+      `Excluded: triggered deal-breaker '${triggeredExclusions.join("', '")}'`,
+    );
     return {
       score: 0,
       matchedSkills: [],
@@ -112,7 +126,9 @@ export function scoreMessage(
     }
   }
   if (triggeredExclusions.length > 0) {
-    matchReasons.push(`Excluded: triggered exclusion keyword '${triggeredExclusions.join("', '")}'`);
+    matchReasons.push(
+      `Excluded: triggered exclusion keyword '${triggeredExclusions.join("', '")}'`,
+    );
     return {
       score: 0,
       matchedSkills: [],
@@ -131,13 +147,21 @@ export function scoreMessage(
   const canonicalPreferred = profile.preferredSkills.map(resolveSkillAlias);
 
   // All known skills = union of required + preferred (for extractSkillMentions)
-  const allKnownSkills = Array.from(new Set([...canonicalRequired, ...canonicalPreferred]));
+  const allKnownSkills = Array.from(
+    new Set([...canonicalRequired, ...canonicalPreferred]),
+  );
 
   const mentionedSkills = extractSkillMentions(normalizedText, allKnownSkills);
 
-  const matchedRequired = canonicalRequired.filter((s) => mentionedSkills.includes(s));
-  const matchedPreferred = canonicalPreferred.filter((s) => mentionedSkills.includes(s));
-  const matchedSkills = Array.from(new Set([...matchedRequired, ...matchedPreferred]));
+  const matchedRequired = canonicalRequired.filter(s =>
+    mentionedSkills.includes(s),
+  );
+  const matchedPreferred = canonicalPreferred.filter(s =>
+    mentionedSkills.includes(s),
+  );
+  const matchedSkills = Array.from(
+    new Set([...matchedRequired, ...matchedPreferred]),
+  );
 
   // ── Required skills score ─────────────────────────────────────────────────
   let requiredScore = 0;
@@ -161,9 +185,14 @@ export function scoreMessage(
   // ── Preferred skills score ────────────────────────────────────────────────
   let preferredScore = 0;
   if (canonicalPreferred.length > 0 && matchedPreferred.length > 0) {
-    const ratio = Math.min(matchedPreferred.length / canonicalPreferred.length, 1);
+    const ratio = Math.min(
+      matchedPreferred.length / canonicalPreferred.length,
+      1,
+    );
     preferredScore = ratio * weights.preferredSkills;
-    matchReasons.push(`Matched preferred skills: ${matchedPreferred.join(', ')}`);
+    matchReasons.push(
+      `Matched preferred skills: ${matchedPreferred.join(', ')}`,
+    );
   }
 
   // ── Work arrangement score ────────────────────────────────────────────────
@@ -172,7 +201,9 @@ export function scoreMessage(
     workScore = weights.workArrangement / 2; // unknown → assume possible
   } else if (profile.workArrangements.includes(extracted.workMode)) {
     workScore = weights.workArrangement;
-    matchReasons.push(`Work arrangement: ${extracted.workMode} (matches your preference)`);
+    matchReasons.push(
+      `Work arrangement: ${extracted.workMode} (matches your preference)`,
+    );
   }
   // else mismatched → 0
 
@@ -182,7 +213,9 @@ export function scoreMessage(
     seniorityScore = weights.seniorityMatch / 2;
   } else if (profile.seniorityLevels.includes(extracted.seniority)) {
     seniorityScore = weights.seniorityMatch;
-    matchReasons.push(`Seniority level: ${extracted.seniority} (matches your preference)`);
+    matchReasons.push(
+      `Seniority level: ${extracted.seniority} (matches your preference)`,
+    );
   }
 
   // ── Employment type score ─────────────────────────────────────────────────
@@ -191,7 +224,9 @@ export function scoreMessage(
     employmentScore = weights.employmentType / 2;
   } else if (profile.employmentTypes.includes(extracted.employmentType)) {
     employmentScore = weights.employmentType;
-    matchReasons.push(`Employment type: ${extracted.employmentType} (matches your preference)`);
+    matchReasons.push(
+      `Employment type: ${extracted.employmentType} (matches your preference)`,
+    );
   }
 
   // ── Role/title bonus ──────────────────────────────────────────────────────
@@ -202,7 +237,9 @@ export function scoreMessage(
     const extractedTitleLower = extracted.title.toLowerCase();
     for (const targetTitle of profile.targetTitles) {
       const words = targetTitle.toLowerCase().split(/\s+/);
-      const matchCount = words.filter((w) => containsTerm(extractedTitleLower, w)).length;
+      const matchCount = words.filter(w =>
+        containsTerm(extractedTitleLower, w),
+      ).length;
       if (matchCount >= Math.ceil(words.length * 0.5)) {
         matchedRoles.push(extracted.title);
         roleBonus = 10;
@@ -220,7 +257,13 @@ export function scoreMessage(
   }
 
   // ── Total score ───────────────────────────────────────────────────────────
-  let score = requiredScore + preferredScore + workScore + seniorityScore + employmentScore + roleBonus;
+  let score =
+    requiredScore +
+    preferredScore +
+    workScore +
+    seniorityScore +
+    employmentScore +
+    roleBonus;
 
   // Cap at 50 if no required skills matched
   if (noRequiredSkillsCap) {
@@ -234,13 +277,16 @@ export function scoreMessage(
   const missingInfo: string[] = [];
   if (!extracted.title) missingInfo.push('Job title not specified');
   if (!extracted.company) missingInfo.push('Company not identified');
-  if (!extracted.deadline) missingInfo.push('Application deadline not mentioned');
+  if (!extracted.deadline)
+    missingInfo.push('Application deadline not mentioned');
   if (!extracted.applyMethod) missingInfo.push('No application method found');
   if (!extracted.workMode) missingInfo.push('Work arrangement not specified');
-  if (!extracted.employmentType) missingInfo.push('Employment type not specified');
+  if (!extracted.employmentType)
+    missingInfo.push('Employment type not specified');
 
   // ── Verdict ───────────────────────────────────────────────────────────────
-  const verdict: Verdict = score >= profile.minScoreThreshold ? 'match' : 'no_match';
+  const verdict: Verdict =
+    score >= profile.minScoreThreshold ? 'match' : 'no_match';
 
   return {
     score,
