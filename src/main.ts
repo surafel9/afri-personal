@@ -220,6 +220,7 @@ async function main(): Promise<void> {
       try {
         await bot.api.setMyCommands([
           { command: 'start', description: 'Start & welcome menu' },
+          { command: 'menu', description: 'Open action menu & docked keyboard' },
           { command: 'fetch', description: 'Screen posts by channel (50-200)' },
           { command: 'reports', description: 'Toggle 15m scan reports (ON/OFF)' },
           { command: 'status', description: 'Check status, metrics & feedback' },
@@ -228,6 +229,9 @@ async function main(): Promise<void> {
           { command: 'clear', description: 'Clear chat' },
           { command: 'help', description: 'Help & instructions' },
         ]);
+        await bot.api.setChatMenuButton({
+          menu_button: { type: 'commands' },
+        });
         await bot.api.setMyDescription(
           '👋 Welcome to AfriPersonal!\nYour automated personal technical job watcher for Ethiopian channels.',
         );

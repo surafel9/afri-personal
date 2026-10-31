@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { GrammyError } from 'grammy';
 import { createDb } from '../../database/client.js';
 import { runMigrations } from '../../database/migrate.js';
-import { createBot } from '../bot.js';
+import { createBot, buildPersistentKeyboard } from '../bot.js';
 import { createProfileRepo } from '../../database/repositories/profile.js';
 import { createSourcesRepo } from '../../database/repositories/sources.js';
 import { createFeedbackRepo } from '../../database/repositories/feedback.js';
@@ -392,5 +392,68 @@ describe('Bot & Security Middleware', () => {
     expect(payload.text).toContain('@DagmawiBabiJobs');
     expect(payload.text).toContain('@ethiojobsofficial');
     expect(payload.text).toContain('@qena_jobs');
+  });
+
+  it('buildPersistentKeyboard configures persistent and resized keyboard with dynamic reports toggle', () => {
+    const kbOn = buildPersistentKeyboard(true);
+    expect(kbOn.is_persistent).toBe(true);
+    expect(kbOn.resize_keyboard).toBe(true);
+    const flatOn = kbOn.keyboard.flat().map(b => b.text);
+    expect(flatOn).toContain('⚡ Fetch Recent Jobs');
+    expect(flatOn).toContain('⏱️ Reports: 🟢 ON');
+    expect(flatOn).toContain('📊 Status');
+    expect(flatOn).toContain('⚙️ Profile');
+    expect(flatOn).toContain('🧹 Clear Chat');
+    expect(flatOn).toContain('ℹ️ Help');
+
+    const kbOff = buildPersistentKeyboard(false);
+    const flatOff = kbOff.keyboard.flat().map(b => b.text);
+    expect(flatOff).toContain('⏱️ Reports: 🔴 OFF');
+  });
+
+  it('handles persistent keyboard button texts for fetch, reports toggle, and menu', async () => {
+    const { bot, sentMessages } = setupMockBot();
+
+    // 1. Click "⚡ Fetch Recent Jobs" button
+    await bot.handleUpdate({
+      update_id: 10,
+      message: {
+        message_id: 30,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: OWNER_ID, type: 'private' as const, first_name: 'Owner' },
+        from: { id: OWNER_ID, is_bot: false, first_name: 'Owner' },
+        text: '⚡ Fetch Recent Jobs',
+      },
+    });
+
+    const fetchMsg = sentMessages[sentMessages.length - 1];
+    expect((fetchMsg?.payload as { text: string }).text).toContain('On-Demand Job Screening');
+
+    // 2. Click "⏱️ Reports: 🟢 ON" button to toggle reports OFF
+    await bot.handleUpdate({
+      update_id: 11,
+      message: {
+        message_id: 31,
+        date: Math.floor(Date.now() / 1000),
+        chat: { id: OWNER_ID, type: 'private' as const, first_name: 'Owner' },
+        from: { id: OWNER_ID, is_bot: false, first_name: 'Owner' },
+        text: '⏱️ Reports: 🟢 ON',
+      },
+    });
+
+    const reportMsg = sentMessages[sentMessages.length - 1];
+    expect((reportMsg?.payload as { text: string }).text).toContain('🔴 <b>OFF</b>');
+    const reportPayload = reportMsg?.payload as { reply_markup?: { keyboard: Array<Array<{ text: string }>> } };
+    const flatButtons = reportPayload.reply_markup?.keyboard.flat().map(b => b.text);
+    expect(flatButtons).toContain('⏱️ Reports: 🔴 OFF');
+
+    // 3. /menu command re-attaches the persistent menu
+    await bot.handleUpdate({
+      update_id: 12,
+      message: createCommandMessage(32, '/menu', OWNER_ID),
+    });
+
+    const menuMsg = sentMessages[sentMessages.length - 1];
+    expect((menuMsg?.payload as { text: string }).text).toContain('AfriPersonal Main Menu');
   });
 });

@@ -44,6 +44,9 @@ AfriPersonal automatically aggregates and monitors 4 premier Ethiopian job chann
 * **Pristine Chat Cleaner (`/clear`)**:
   - Wipes all job alerts, reports, and command clutter down to the original first welcome card.
   - Leaves the initial interactive welcome menu intact so you can access all controls immediately.
+* **Persistent Docked Menu (PC & Mobile)**:
+  - Custom reply keyboard stays permanently docked at the bottom of the window (`is_persistent: true`), so you can tap `⚡ Fetch Recent Jobs`, `⏱️ Reports`, `📊 Status`, `⚙️ Profile`, `🧹 Clear Chat`, or `ℹ️ Help` at any time without scrolling.
+  - Native Telegram Desktop "Menu" button on PC configured via `setChatMenuButton`.
 * **Single-Owner Security**: Strict whitelist middleware enforces that only your Telegram `OWNER_CHAT_ID` can interact with the bot.
 
 ---
@@ -52,7 +55,8 @@ AfriPersonal automatically aggregates and monitors 4 premier Ethiopian job chann
 
 | Command | Description |
 | :--- | :--- |
-| `/start` | Launch the bot, view welcome menu, and access quick buttons. |
+| `/start` | Launch the bot, view welcome menu, and dock persistent bottom keyboard. |
+| `/menu` | Re-open action menu and refresh docked bottom keyboard. |
 | `/fetch` | Screen 50, 100, 150, or 200 posts from a specific channel or all channels. |
 | `/reports` | Toggle 15-minute scan report summaries (ON / OFF). |
 | `/status` | View operational health, channels monitored, today's activity (EAT), and feedback stats. |

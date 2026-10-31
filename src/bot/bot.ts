@@ -44,6 +44,20 @@ import { logger } from '../observability/logger.js';
 
 export const removeKeyboardMarkup = { remove_keyboard: true as const };
 
+export function buildPersistentKeyboard(reportsOn = true): Keyboard {
+  return new Keyboard()
+    .text('⚡ Fetch Recent Jobs')
+    .text(reportsOn ? '⏱️ Reports: 🟢 ON' : '⏱️ Reports: 🔴 OFF')
+    .row()
+    .text('📊 Status')
+    .text('⚙️ Profile')
+    .row()
+    .text('🧹 Clear Chat')
+    .text('ℹ️ Help')
+    .resized()
+    .persistent();
+}
+
 export function getWelcomeText(): string {
   return '👋 <b>Welcome to AfriPersonal!</b>';
 }
@@ -59,6 +73,7 @@ export function getStartActionText(): string {
     `⏱️ <b>Auto-Scan:</b> Runs silently every 15 minutes\n` +
     `🎯 <b>Filter:</b> Strict technical titles only (zero non-tech clutter)\n\n` +
     `<b>Commands:</b>\n` +
+    `• /menu — Open action menu & docked keyboard\n` +
     `• /fetch — Screen posts on-demand (50, 100, 150, 200)\n` +
     `• /reports — Toggle 15m scan reports (ON/OFF)\n` +
     `• /status — View today's stats, channels & feedback\n` +
@@ -237,24 +252,16 @@ export function createBot(
         : `${getWelcomeText()}\n\n${getStartActionText()}`;
 
     const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
-    const menuKeyboard = new InlineKeyboard()
-      .text('⚡ Fetch Recent Jobs', 'action:fetch_menu')
-      .text(
-        reportsOn ? '⏱️ Reports: 🟢 ON' : '⏱️ Reports: 🔴 OFF',
-        reportsOn ? 'reports:off' : 'reports:on',
-      )
-      .row()
-      .text('📊 Status', 'action:status')
-      .text('🧹 Clear Chat', 'confirm:clear');
+    const persistentKeyboard = buildPersistentKeyboard(reportsOn);
 
     const sentAction = ctx
       ? await ctx.reply(actionText, {
           parse_mode: 'HTML',
-          reply_markup: menuKeyboard,
+          reply_markup: persistentKeyboard,
         })
       : await bot.api.sendMessage(chatId, actionText, {
           parse_mode: 'HTML',
-          reply_markup: menuKeyboard,
+          reply_markup: persistentKeyboard,
         });
 
     return { photoMsgId, actionMsgId: sentAction.message_id };
@@ -388,7 +395,7 @@ export function createBot(
   };
 
   bot.command('clear', handleClear);
-  bot.hears('🧹 Clear Chat', handleClear);
+  bot.hears(['🧹 Clear Chat', 'Clear Chat', 'clear chat'], handleClear);
 
   // ── /fetch — Interactive On-demand channel & quantity posts fetcher ───────
   const buildChannelSelectionKeyboard = () => {
@@ -695,48 +702,91 @@ export function createBot(
 
   bot.command('fetch', handleFetchCommand);
   bot.command('fetch50', ctx => executeFetch(ctx, 'all', 50));
-  bot.hears('📥 Fetch Recent Jobs', ctx => showFetchMenu(ctx));
-  bot.hears('⚡ Fetch Recent Jobs', ctx => showFetchMenu(ctx));
+  bot.hears(['⚡ Fetch Recent Jobs', '📥 Fetch Recent Jobs', 'Fetch Recent Jobs'], ctx => showFetchMenu(ctx));
   bot.hears('📥 Fetch 50 Recent Jobs', ctx => executeFetch(ctx, 'all', 50));
 
+  // ── /menu ──────────────────────────────────────────────────────────────────
+  const handleMenu = async (ctx: Context) => {
+    const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
+    const text =
+      `📋 <b>AfriPersonal Main Menu</b>\n\n` +
+      `⚡ Use the docked menu buttons below anytime on PC and mobile:\n\n` +
+      `• <b>⚡ Fetch Recent Jobs:</b> Screen recent posts on-demand (50-200)\n` +
+      `• <b>⏱️ Reports:</b> Toggle 15-minute periodic scan summaries\n` +
+      `• <b>📊 Status:</b> Check today's activity, channel health & feedback\n` +
+      `• <b>⚙️ Profile:</b> View active technical career preferences\n` +
+      `• <b>🧹 Clear Chat:</b> Wipe conversation clutter until the first message\n` +
+      `• <b>ℹ️ Help:</b> View bot guide & full command documentation`;
+
+    await ctx.reply(text, {
+      parse_mode: 'HTML',
+      reply_markup: buildPersistentKeyboard(reportsOn),
+    });
+  };
+
+  bot.command('menu', handleMenu);
+  bot.hears(['📋 Menu', 'Menu', 'menu'], handleMenu);
+
   // ── /help ──────────────────────────────────────────────────────────────────
-  bot.command('help', async ctx => {
+  const handleHelp = async (ctx: Context) => {
+    const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
+    const channels = getMonitoredChannels();
+    const channelNames = channels.map(c => c.name).join(', ');
     const text =
       `📖 <b>AfriPersonal Help & Usage</b>\n\n` +
       `<b>100% Automated Job Watcher:</b>\n` +
-      `• <b>Channel Polling:</b> Automatically monitors @freelance_ethio every 15 minutes.\n` +
+      `• <b>Channel Polling:</b> Automatically monitors ${channels.length} Ethiopian channels (${channelNames}) every 15 minutes.\n` +
       `• <b>Zero Manual Work:</b> You never need to browse channels or copy/paste posts.\n` +
       `• <b>Strict Title Filter:</b> Only genuine tech titles (Developer, Software, Engineer, Fullstack, Mobile, DevOps, UI/UX, etc.) are matched.\n` +
       `• <b>Verbatim Delivery:</b> Sends the exact original post with direct link to your DM.\n\n` +
+      `<b>Docked Bottom Menu:</b>\n` +
+      `The menu buttons stay permanently docked at the bottom of your screen in PC (Telegram Desktop) and mobile.\n\n` +
       `<b>Commands:</b>\n` +
-      `• /clear — Clear conversation and job alerts from this chat\n` +
+      `• /menu — Re-open action menu & docked keyboard\n` +
+      `• /fetch — Screen posts on-demand (50, 100, 150, 200)\n` +
       `• /reports — Toggle 15-minute periodic scan reports (ON/OFF)\n` +
-      `• /status — Operational health and queue depths\n` +
+      `• /status — Operational health, channels & metrics\n` +
       `• /profile — Active career preferences and criteria\n` +
+      `• /clear — Clear conversation and job alerts until the first message\n` +
+      `• /sources — Channel health & inspection\n` +
       `• /matches — Recent matched evaluations\n` +
       `• /stats — Aggregated metrics\n` +
       `• /pause — Temporarily halt notifications\n` +
       `• /resume — Unpause notifications`;
-    await ctx.reply(text, { parse_mode: 'HTML' });
-  });
+
+    await ctx.reply(text, {
+      parse_mode: 'HTML',
+      reply_markup: buildPersistentKeyboard(reportsOn),
+    });
+  };
+
+  bot.command('help', handleHelp);
+  bot.hears(['ℹ️ Help', 'Help', 'help'], handleHelp);
 
   // ── /reports — Toggle 15-minute periodic scan reports ──────────────────────
   const handleReports = async (ctx: Context) => {
-    const textArg = ctx.message?.text?.split(' ')[1]?.toLowerCase();
+    const rawText = ctx.message?.text?.trim() ?? '';
+    const textArg = rawText.split(/\s+/)[1]?.toLowerCase();
     let isEnabled = appStateRepo.get('periodic_reports_enabled') !== 'false';
 
-    if (textArg === 'on') {
+    if (rawText.includes('🟢 ON')) {
+      isEnabled = false;
+      appStateRepo.set('periodic_reports_enabled', 'false');
+    } else if (rawText.includes('🔴 OFF')) {
+      isEnabled = true;
+      appStateRepo.set('periodic_reports_enabled', 'true');
+    } else if (textArg === 'on') {
       appStateRepo.set('periodic_reports_enabled', 'true');
       isEnabled = true;
     } else if (textArg === 'off') {
       appStateRepo.set('periodic_reports_enabled', 'false');
       isEnabled = false;
-    } else if (textArg === 'toggle') {
+    } else {
       isEnabled = !isEnabled;
       appStateRepo.set('periodic_reports_enabled', isEnabled ? 'true' : 'false');
     }
 
-    const keyboard = new InlineKeyboard().text(
+    const inlineKeyboard = new InlineKeyboard().text(
       isEnabled ? '🔴 Turn OFF Reports' : '🟢 Turn ON Reports',
       isEnabled ? 'reports:off' : 'reports:on',
     );
@@ -748,13 +798,22 @@ export function createBot(
           : `• Silent mode active: You will <b>only</b> receive messages when a new relevant tech job is found.\n• Periodic scan summaries are muted.`),
       {
         parse_mode: 'HTML',
-        reply_markup: keyboard,
+        reply_markup: buildPersistentKeyboard(isEnabled),
       },
     );
   };
 
   bot.command('reports', handleReports);
-  bot.hears('⏱️ Reports', handleReports);
+  bot.hears(
+    [
+      '⏱️ Reports: 🟢 ON',
+      '⏱️ Reports: 🔴 OFF',
+      '⏱️ Reports',
+      'Reports',
+      'reports',
+    ],
+    handleReports,
+  );
 
   // ── /status ────────────────────────────────────────────────────────────────
   const handleStatus = async (ctx: Context) => {
@@ -860,11 +919,12 @@ export function createBot(
 
     await ctx.reply(text, {
       parse_mode: 'HTML',
+      reply_markup: buildPersistentKeyboard(reportsOn),
     });
   };
 
   bot.command('status', handleStatus);
-  bot.hears('📊 Status', handleStatus);
+  bot.hears(['📊 Status', 'Status', 'status'], handleStatus);
 
   // ── /sources ───────────────────────────────────────────────────────────────
   bot.command('sources', async ctx => {
@@ -909,13 +969,15 @@ export function createBot(
       `⛔ <b>Deal-Breakers:</b>\n  ${p.dealBreakers.join(', ')}\n\n` +
       `📊 <b>Notification Threshold:</b> ${p.minScoreThreshold}/100`;
 
+    const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
     await ctx.reply(text, {
       parse_mode: 'HTML',
+      reply_markup: buildPersistentKeyboard(reportsOn),
     });
   };
 
   bot.command('profile', handleProfile);
-  bot.hears('👤 Profile', handleProfile);
+  bot.hears(['⚙️ Profile', '👤 Profile', 'Profile', 'profile'], handleProfile);
 
   // ── /matches ───────────────────────────────────────────────────────────────
   bot.command('matches', async ctx => {
@@ -1105,8 +1167,39 @@ export function createBot(
   });
 
   bot.on('message:text', async ctx => {
-    // If it's not a command, treat as forwarded/pasted job post
-    if (ctx.message.text.startsWith('/')) return;
+    const rawText = ctx.message.text.trim();
+    // If it's a command, let command handlers process it
+    if (rawText.startsWith('/')) return;
+
+    // Menu button texts must not be processed as job posts
+    const menuPhrases = [
+      '⚡ Fetch Recent Jobs',
+      '📥 Fetch Recent Jobs',
+      'Fetch Recent Jobs',
+      '⏱️ Reports: 🟢 ON',
+      '⏱️ Reports: 🔴 OFF',
+      '⏱️ Reports',
+      'Reports',
+      'reports',
+      '📊 Status',
+      'Status',
+      'status',
+      '⚙️ Profile',
+      '👤 Profile',
+      'Profile',
+      'profile',
+      '🧹 Clear Chat',
+      'Clear Chat',
+      'clear chat',
+      'ℹ️ Help',
+      'Help',
+      'help',
+      '📋 Menu',
+      'Menu',
+      'menu',
+    ];
+    if (menuPhrases.includes(rawText)) return;
+
     await handleIngestText(ctx, ctx.message.text);
   });
 
