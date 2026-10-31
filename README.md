@@ -2,114 +2,41 @@
 
 # AfriPersonal
 
-A private, single-user Telegram personal assistant that continuously scans and filters Ethiopian freelance and tech job channels, delivering matching engineering and software opportunities straight to your private chat.
+A private, single-user Telegram assistant that filters noisy job channels and delivers matching opportunities directly to your private chat using a fast, deterministic rule engine.
 
-Powered by a fast, deterministic matching engine operating locally with **sub-millisecond evaluation**, zero external API costs, and cryptographic deduplication.
+## The Problem
 
----
+Job channels on Telegram publish dozens or hundreds of messages every day. Finding relevant opportunities manually is tedious and inefficient:
 
-## 📡 Monitored Channels
+- High Noise: Promotional advertisements, non-technical roles, and generic announcements clutter the feed.
+- Repost Fatigue: The same job listing is frequently reposted over days or weeks with minor text or formatting variations.
+- Wasted Time: Developers have to manually skim through hundreds of posts every day just to find the few opportunities that fit their specific niche.
 
-AfriPersonal automatically aggregates and monitors 4 premier Ethiopian job channels:
+## Monitored Channels
 
-1. **`@freelance_ethio`** — Freelance Ethiopia (Tech, Development & Remote contracts)
-2. **`@DagmawiBabiJobs`** — Dagmawi Babi Tech Jobs (Dedicated software engineering, frontend, backend, mobile)
-3. **`@ethiojobsofficial`** — Ethio Jobs Official (National and regional opportunities)
-4. **`@qena_jobs`** — Qena Jobs (Tech & professional vacancies)
+AfriPersonal automatically monitors 4 channels:
+- `@freelance_ethio`
+- `@DagmawiBabiJobs`
+- `@ethiojobsofficial`
+- `@qena_jobs`
 
----
+## The Solution
 
-## ⚡ Key Capabilities
+AfriPersonal serves as an automated personal filter between noisy job channels and your private inbox:
 
-* **Strict Technical Filter**: Matches genuine tech job titles only (`Software Engineer`, `Frontend Developer`, `Backend Developer`, `Fullstack`, `Mobile Developer`, `DevOps`, `UI/UX Designer`, `Data Engineer`, `QA Engineer`, etc.). Aggressively suppresses non-tech clutter (sales, accounting, driving, marketing, clerical work).
-* **Verbatim Delivery**: Forwards the exact original post text, formatting, and direct links back to Telegram without altering a word.
-* **Source Indicator**: Every job card clearly indicates its channel origin:
-  ```text
-  📡 Source: @DagmawiBabiJobs
-  
-  Senior Full-Stack Developer (Node.js & React)
-  ...
-  🔗 View original Telegram post
-  👉 Apply / Link
-  [ 👍 Relevant ] [ 👎 Not relevant ] [ 💼 Applied ]
-  ```
-* **Cryptographic Deduplication**: SHA-256 normalized text hashing prevents repeat alerts for the same reposted job across channels or days.
-* **Interactive On-Demand Screening (`/fetch`)**:
-  - **Step 1**: Select channel (`🌐 All Channels`, `@freelance_ethio`, `@DagmawiBabiJobs`, `@ethiojobsofficial`, `@qena_jobs`).
-  - **Step 2**: Select quantity (`50`, `100`, `150`, or `200` recent posts).
-  - Screens instantly and provides a complete per-channel breakdown.
-* **15-Minute Scan Reports (`/reports`)**:
-  - Automatically summarizes every 15-minute polling cycle across all 4 channels (`Total Scanned = Relevant + Rejected`).
-  - Toggle ON/OFF anytime. When OFF, silent mode activates: you only receive alerts when a relevant tech job is found.
-* **Pristine Chat Cleaner (`/clear`)**:
-  - Wipes all job alerts, reports, and command clutter down to the original first welcome card.
-  - Leaves the initial interactive welcome menu intact so you can access all controls immediately.
-* **Persistent Docked Menu (PC & Mobile)**:
-  - Custom reply keyboard stays permanently docked at the bottom of the window (`is_persistent: true`), so you can tap `⚡ Fetch Recent Jobs`, `⏱️ Reports`, `📊 Status`, `⚙️ Profile`, `🧹 Clear Chat`, or `ℹ️ Help` at any time without scrolling.
-  - Native Telegram Desktop "Menu" button on PC configured via `setChatMenuButton`.
-* **Single-Owner Security**: Strict whitelist middleware enforces that only your Telegram `OWNER_CHAT_ID` can interact with the bot.
+- Deterministic Matching: Evaluates opportunities locally in under 1 millisecond using rule-based scoring and skill alias normalization (e.g. NodeJS, React, Flutter, SQL, Python).
+- Repost Deduplication: Uses cryptographic text hashing to recognize reposted announcements, ensuring you are never alerted for the same job twice.
+- Verbatim Delivery: Delivers the exact, unedited original post text and direct application links straight to your private Telegram DM.
+- Zero AI Overhead: Operates with zero monthly API bills, no external LLM dependencies, and no network latency.
+- Single-Owner Security: Strict access controls ensure the bot only processes requests and delivers alerts to your verified Telegram user ID.
 
----
+## Tech Stack
 
-## 🤖 Bot Commands
+- Runtime: Node.js 22 LTS (TypeScript, ESM)
+- Bot Framework: grammY (Telegram Bot API framework)
+- Database: SQLite with better-sqlite3 and Drizzle ORM
+- Testing: Vitest
 
-| Command | Description |
-| :--- | :--- |
-| `/start` | Launch the bot, view welcome menu, and dock persistent bottom keyboard. |
-| `/menu` | Re-open action menu and refresh docked bottom keyboard. |
-| `/fetch` | Screen 50, 100, 150, or 200 posts from a specific channel or all channels. |
-| `/reports` | Toggle 15-minute scan report summaries (ON / OFF). |
-| `/status` | View operational health, channels monitored, today's activity (EAT), and feedback stats. |
-| `/sources` | Inspect configured sources, ingestion method, and health. |
-| `/profile` | View your active career profile, target titles, skills, and scoring weights. |
-| `/clear` | Clear all chat messages and clutter down to the first welcome card. |
-| `/help` | Detailed instructions and command guide. |
-
----
-
-## 🛠️ Architecture & Tech Stack
-
-* **Runtime**: Node.js 22 LTS (ESM, TypeScript)
-* **Telegram Framework**: [grammY](https://grammy.dev/)
-* **Database**: SQLite with `better-sqlite3` and [Drizzle ORM](https://orm.drizzle.team/) (WAL mode + foreign key enforcement)
-* **Matching Engine**: Deterministic rule-based scorer (sub-1ms execution, title taxonomy matching, skill normalization)
-* **Test Suite**: [Vitest](https://vitest.dev/) (153 unit & integration tests)
-
----
-
-## 🚀 Environment Configuration
-
-| Variable | Required | Default | Description |
-| :--- | :---: | :---: | :--- |
-| `BOT_TOKEN` | **Yes** | — | Telegram Bot API token from [@BotFather](https://t.me/BotFather). |
-| `OWNER_CHAT_ID` | **Yes** | — | Your numeric Telegram user ID. |
-| `TELEGRAM_CHANNELS` | No | `freelance_ethio,DagmawiBabiJobs,ethiojobsofficial,qena_jobs` | Comma-separated list of Telegram channel handles to monitor. |
-| `POLLING_INTERVAL_MS` | No | `900000` (15m) | Background polling frequency in milliseconds. |
-| `DB_PATH` | No | `data/afripersonal.db` | Local SQLite database file path. |
-| `LOG_LEVEL` | No | `info` | Logging verbosity (`trace`, `debug`, `info`, `warn`, `error`). |
-| `NOTIFICATION_THRESHOLD` | No | `60` | Minimum score threshold for notifications. |
-| `DATA_RETENTION_DAYS` | No | `90` | Prunes evaluated entries older than N days. |
-
----
-
-## 📦 Local Development
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Compile TypeScript
-npm run build
-
-# 3. Run all tests
-npm test
-
-# 4. Start locally
-npm start
-```
-
----
-
-## 📄 License
+## License
 
 MIT
