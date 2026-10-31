@@ -9,6 +9,7 @@ import { runMigrations } from './migrate.js';
 import { createSourcesRepo } from './repositories/sources.js';
 import type { Db } from './client.js';
 import { createProfileRepo } from './repositories/profile.js';
+import { getMonitoredChannels } from '../config/index.js';
 
 const DB_PATH = process.env['DB_PATH'] ?? 'data/afripersonal.db';
 
@@ -37,17 +38,18 @@ export function seedDatabase(db: Db): void {
   });
   console.log('[seed] Upserted source: fixture');
 
-  // ── Seed telegram-web source ─────────────────────────────────────────────────
-  // The actual channel URL is set via TELEGRAM_CHANNEL_URL env var.
-  // This record registers the source type so it appears in the sources table.
-  sourcesRepo.upsert({
-    id: 'telegram-web:freelance_ethio',
-    displayName: 'Telegram Web Channel (freelance_ethio)',
-    enabled: 1,
-    ingestionMethod: 'polling',
-    createdAt: now,
-  });
-  console.log('[seed] Upserted source: telegram-web:freelance_ethio');
+  // ── Seed telegram-web sources ─────────────────────────────────────────────────
+  const channels = getMonitoredChannels();
+  for (const ch of channels) {
+    sourcesRepo.upsert({
+      id: ch.sourceId,
+      displayName: ch.displayName,
+      enabled: 1,
+      ingestionMethod: 'polling',
+      createdAt: now,
+    });
+    console.log(`[seed] Upserted source: ${ch.sourceId}`);
+  }
 
   // ── Seed broad tech profile ──────────────────────────────────────────────────
   // Broad "Any Tech Work" profile per the AfriPersonal roadmap.

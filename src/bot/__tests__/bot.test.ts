@@ -340,4 +340,57 @@ describe('Bot & Security Middleware', () => {
     expect(records.length).toBe(1);
     expect(records[0]?.rating).toBe('relevant');
   });
+
+  it('provides multi-channel interactive selection on /fetch and fetch_ch callback', async () => {
+    const { bot, sentMessages } = setupMockBot();
+
+    // 1. Send /fetch command
+    await bot.handleUpdate({
+      update_id: 7,
+      message: createCommandMessage(20, '/fetch', OWNER_ID),
+    });
+
+    const lastMsg = sentMessages[sentMessages.length - 1];
+    expect(lastMsg?.method).toBe('sendMessage');
+    const payload = lastMsg?.payload as { text: string; reply_markup?: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } };
+    expect(payload.text).toContain('On-Demand Job Screening');
+    expect(payload.reply_markup?.inline_keyboard[0]?.[0]?.callback_data).toBe('fetch_ch:all');
+
+    // 2. Click specific channel callback query e.g. DagmawiBabiJobs
+    await bot.handleUpdate({
+      update_id: 8,
+      callback_query: {
+        id: 'cb-ch-1',
+        from: { id: OWNER_ID, is_bot: false, first_name: 'Owner' },
+        chat_instance: 'instance-2',
+        data: 'fetch_ch:DagmawiBabiJobs',
+        message: createCommandMessage(21, 'prompt', OWNER_ID),
+      },
+    });
+
+    const editMsg = sentMessages.find(m => m.method === 'editMessageText');
+    const editPayload = editMsg?.payload as { text: string; reply_markup?: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } };
+    expect(editPayload.text).toContain('DagmawiBabiJobs');
+    expect(editPayload.reply_markup?.inline_keyboard[0]?.[0]?.callback_data).toBe('fetch_run:DagmawiBabiJobs:50');
+  });
+
+  it('displays monitored channels and activity in /status', async () => {
+    const { bot, sentMessages } = setupMockBot();
+
+    await bot.handleUpdate({
+      update_id: 9,
+      message: createCommandMessage(22, '/status', OWNER_ID),
+    });
+
+    const statusMsg = sentMessages.find(
+      m => m.method === 'sendMessage' && (m.payload as { text: string }).text.includes('AfriPersonal Status'),
+    );
+    expect(statusMsg).toBeDefined();
+    const payload = statusMsg?.payload as { text: string };
+    expect(payload.text).toContain('Channels Monitored');
+    expect(payload.text).toContain('@freelance_ethio');
+    expect(payload.text).toContain('@DagmawiBabiJobs');
+    expect(payload.text).toContain('@ethiojobsofficial');
+    expect(payload.text).toContain('@qena_jobs');
+  });
 });

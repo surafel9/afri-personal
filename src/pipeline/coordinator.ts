@@ -27,6 +27,15 @@ export interface CoordinatorOptions {
   retentionDays?: number;
 }
 
+export interface EvaluationSummary {
+  processed: number;
+  matches: number;
+  noMatch: number;
+  skipped: number;
+  excluded: number;
+  notificationsQueued: number;
+}
+
 export class PipelineCoordinator {
   private messagesRepo: ReturnType<typeof createMessagesRepo>;
   private profileRepo: ReturnType<typeof createProfileRepo>;
@@ -94,29 +103,24 @@ export class PipelineCoordinator {
   /**
    * Evaluates all pending messages against the active profile.
    */
-  async processPendingMessages(): Promise<{
-    processed: number;
-    matches: number;
-    skipped: number;
-    excluded: number;
-    notificationsQueued: number;
-  }> {
+  async processPendingMessages(): Promise<EvaluationSummary> {
     const isPaused = this.appStateRepo.get('paused') === 'true';
     if (isPaused) {
       logger.debug('Pipeline is paused, skipping pending message evaluation');
-      return { processed: 0, matches: 0, skipped: 0, excluded: 0, notificationsQueued: 0 };
+      return { processed: 0, matches: 0, noMatch: 0, skipped: 0, excluded: 0, notificationsQueued: 0 };
     }
 
     const activeProfileRow = this.profileRepo.getActive();
     if (!activeProfileRow) {
       logger.warn('No active profile configured, skipping message evaluation');
-      return { processed: 0, matches: 0, skipped: 0, excluded: 0, notificationsQueued: 0 };
+      return { processed: 0, matches: 0, noMatch: 0, skipped: 0, excluded: 0, notificationsQueued: 0 };
     }
 
     const profile = profileFromDb(activeProfileRow);
     const pending = this.messagesRepo.findPending();
 
     let matches = 0;
+    let noMatch = 0;
     let skipped = 0;
     let excluded = 0;
     let notificationsQueued = 0;
@@ -166,6 +170,8 @@ export class PipelineCoordinator {
               'Suppressing duplicate notification for already alerted job',
             );
           }
+        } else if (evalRes.verdict === 'no_match') {
+          noMatch++;
         } else if (evalRes.verdict === 'skipped') {
           skipped++;
         } else if (evalRes.verdict === 'excluded') {
@@ -181,6 +187,7 @@ export class PipelineCoordinator {
     return {
       processed: pending.length,
       matches,
+      noMatch,
       skipped,
       excluded,
       notificationsQueued,
@@ -215,15 +222,9 @@ export class PipelineCoordinator {
   /**
    * Perform one complete iteration of evaluation + delivery queue.
    */
-  async runCycle(): Promise<{
-    processed: number;
-    matches: number;
-    skipped: number;
-    excluded: number;
-    notificationsQueued: number;
-  }> {
+  async runCycle(): Promise<EvaluationSummary> {
     if (this.isProcessing) {
-      return { processed: 0, matches: 0, skipped: 0, excluded: 0, notificationsQueued: 0 };
+      return { processed: 0, matches: 0, noMatch: 0, skipped: 0, excluded: 0, notificationsQueued: 0 };
     }
     this.isProcessing = true;
     try {

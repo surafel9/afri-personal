@@ -31,13 +31,17 @@ const envSchema = z.object({
     .transform((v) => parseInt(v, 10))
     .pipe(z.number().int().min(1)),
   // ── Channel polling ────────────────────────────────────────────────────────
-  // Public Telegram channel preview URL to poll for job posts.
-  // Defaults to Freelance Ethiopia channel.
+  // Public Telegram channel preview URL to poll for job posts (legacy single-channel fallback)
   TELEGRAM_CHANNEL_URL: z
     .string()
     .url()
     .default('https://t.me/s/freelance_ethio'),
-  // How often to poll the channel, in milliseconds. Default: 15 minutes.
+  // Comma-separated list of Telegram channel handles or URLs
+  // Defaults to all 4 supported Ethiopian tech/freelance job channels.
+  TELEGRAM_CHANNELS: z
+    .string()
+    .default('freelance_ethio,DagmawiBabiJobs,ethiojobsofficial,qena_jobs'),
+  // How often to poll the channels, in milliseconds. Default: 15 minutes.
   POLLING_INTERVAL_MS: z
     .string()
     .default("900000")
@@ -64,3 +68,55 @@ function loadConfig() {
 export const config = loadConfig();
 
 export type Config = typeof config;
+
+export interface ChannelInfo {
+  handle: string; // e.g. "freelance_ethio"
+  name: string; // e.g. "@freelance_ethio"
+  webUrl: string; // e.g. "https://t.me/s/freelance_ethio"
+  publicUrl: string; // e.g. "https://t.me/freelance_ethio"
+  sourceId: string; // e.g. "telegram-web:freelance_ethio"
+  displayName: string; // e.g. "Freelance Ethiopia (@freelance_ethio)"
+}
+
+export function parseChannelHandle(input: string): string {
+  return input
+    .trim()
+    .replace(/^https?:\/\/t\.me\/(s\/)?/, '')
+    .replace(/^@/, '')
+    .replace(/\/$/, '')
+    .trim();
+}
+
+const KNOWN_CHANNEL_NAMES: Record<string, string> = {
+  freelance_ethio: 'Freelance Ethiopia',
+  DagmawiBabiJobs: 'Dagmawi Babi Tech Jobs',
+  ethiojobsofficial: 'Ethio Jobs Official',
+  qena_jobs: 'Qena Jobs',
+};
+
+export function getMonitoredChannels(): ChannelInfo[] {
+  const rawList = config.TELEGRAM_CHANNELS
+    ? config.TELEGRAM_CHANNELS.split(',')
+    : [config.TELEGRAM_CHANNEL_URL];
+
+  const seen = new Set<string>();
+  const list: ChannelInfo[] = [];
+
+  for (const item of rawList) {
+    const handle = parseChannelHandle(item);
+    if (!handle || seen.has(handle.toLowerCase())) continue;
+    seen.add(handle.toLowerCase());
+
+    const friendlyName = KNOWN_CHANNEL_NAMES[handle] ?? handle;
+    list.push({
+      handle,
+      name: `@${handle}`,
+      webUrl: `https://t.me/s/${handle}`,
+      publicUrl: `https://t.me/${handle}`,
+      sourceId: `telegram-web:${handle}`,
+      displayName: `${friendlyName} (@${handle})`,
+    });
+  }
+
+  return list;
+}

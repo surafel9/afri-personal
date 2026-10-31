@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatNotification, escapeHtml } from '../formatter.js';
+import { formatNotification, formatVerbatim, escapeHtml } from '../formatter.js';
 import type { Evaluation } from '../../database/repositories/evaluations.js';
 
 describe('formatter', () => {
@@ -54,6 +54,18 @@ describe('formatter', () => {
       '👎 Not relevant',
       '💼 Applied',
     ]);
+  });
+
+  it('formats verbatim notification including channel source header', () => {
+    const rawText = 'Junior Flutter Developer wanted. Apply at hr@example.com';
+    const links = ['https://t.me/DagmawiBabiJobs/543'];
+
+    const formatted = formatVerbatim(rawText, links, 99, 'DagmawiBabiJobs');
+
+    expect(formatted.text).toContain('📡 <b>Source:</b> @DagmawiBabiJobs');
+    expect(formatted.text).toContain('Junior Flutter Developer wanted');
+    expect(formatted.text).toContain('https://t.me/DagmawiBabiJobs/543');
+    expect(formatted.keyboard.inline_keyboard[0]?.[0]?.callback_data).toBe('feedback:99:relevant');
   });
 });
 

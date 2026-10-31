@@ -21,6 +21,20 @@ export function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;');
 }
 
+export function extractChannelHandle(urlOrSource?: string): string | null {
+  if (!urlOrSource) return null;
+  const cleaned = urlOrSource
+    .replace(/^telegram-web:/, '')
+    .replace(/^https?:\/\/t\.me\/(s\/)?/, '')
+    .replace(/^@/, '')
+    .trim();
+  const handle = cleaned.split('/')[0] ?? '';
+  if (!handle || ['joinchat', 'addstickers', 'c', 'share', 'contact'].includes(handle.toLowerCase())) {
+    return null;
+  }
+  return handle;
+}
+
 export interface FormattedNotification {
   text: string;
   keyboard: InlineKeyboard;
@@ -37,7 +51,13 @@ export function formatNotification(
   const title = evalRow.extractedTitle
     ? escapeHtml(evalRow.extractedTitle)
     : 'Job Opportunity';
-  parts.push(`🎯 <b>${title}</b>`);
+
+  let channelHeader = '';
+  const channelHandle = extractChannelHandle(sourceMsg?.sourceId);
+  if (channelHandle) {
+    channelHeader = `📡 <b>Source:</b> @${escapeHtml(channelHandle)}\n`;
+  }
+  parts.push(`${channelHeader}🎯 <b>${title}</b>`);
 
   // Key attributes
   const meta: string[] = [];
@@ -152,11 +172,21 @@ export function formatVerbatim(
   rawText: string,
   originalLinks: string[],
   notificationId: number,
+  sourceInfo?: string,
 ): FormattedNotification {
   const parts: string[] = [];
 
+  const handle =
+    extractChannelHandle(sourceInfo) ??
+    (originalLinks.length > 0 ? extractChannelHandle(originalLinks[0]) : null);
+
+  let header = '';
+  if (handle) {
+    header = `📡 <b>Source:</b> @${escapeHtml(handle)}\n\n`;
+  }
+
   // The exact, unedited post text — HTML-escaped so it renders safely.
-  parts.push(escapeHtml(rawText));
+  parts.push(header + escapeHtml(rawText));
 
   // Direct link to the original Telegram post and any application links
   if (originalLinks.length > 0) {

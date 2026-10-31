@@ -90,6 +90,7 @@ export class NotificationDeliveryService {
           sourceMsg?.originalText ?? '',
           sourceMsg?.links ? (JSON.parse(sourceMsg.links) as string[]) : [],
           notif.id,
+          sourceMsg?.sourceId,
         )
       : formatNotification(evaluation, notif.id, sourceMsg);
 

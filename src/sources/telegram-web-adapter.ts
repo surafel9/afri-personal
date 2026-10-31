@@ -54,12 +54,17 @@ export class TelegramWebAdapter implements SourceAdapter {
    *                    e.g. "https://t.me/s/freelance_ethio"
    * @param db          Database handle for checkpoint persistence.
    */
-  constructor(channelUrl: string, db: Db) {
-    this.channelUrl = channelUrl.replace(/\/$/, ''); // strip trailing slash
-    // Derive a stable sourceId from the channel name, e.g. "telegram-web:freelance_ethio"
-    const channelName = this.channelUrl.split('/').pop() ?? 'unknown';
-    this.sourceId = `telegram-web:${channelName}`;
-    this.displayName = `Telegram Web Channel (${channelName})`;
+  constructor(channelUrlOrHandle: string, db: Db) {
+    const raw = channelUrlOrHandle.trim().replace(/\/$/, '');
+    const cleanHandle = raw
+      .replace(/^https?:\/\/t\.me\/(s\/)?/, '')
+      .replace(/^@/, '')
+      .replace(/\/$/, '')
+      .trim();
+
+    this.channelUrl = `https://t.me/s/${cleanHandle}`;
+    this.sourceId = `telegram-web:${cleanHandle}`;
+    this.displayName = `Telegram Web Channel (${cleanHandle})`;
     this.appStateRepo = createAppStateRepo(db);
   }
 
@@ -146,7 +151,7 @@ export class TelegramWebAdapter implements SourceAdapter {
     );
 
     const fetchedAt = new Date();
-    const channelName = this.channelUrl.split('/').pop() ?? 'freelance_ethio';
+    const channelName = this.sourceId.replace('telegram-web:', '');
     let yielded = 0;
 
     for (const post of newPostsToYield) {
@@ -220,7 +225,7 @@ export class TelegramWebAdapter implements SourceAdapter {
     const sorted = allPosts.sort((a, b) => numericId(a.messageId) - numericId(b.messageId));
     const target = sorted.slice(-limit);
     const fetchedAt = new Date();
-    const channelName = this.channelUrl.split('/').pop() ?? 'freelance_ethio';
+    const channelName = this.sourceId.replace('telegram-web:', '');
 
     return target.map((post) => {
       const postUrl = `https://t.me/${channelName}/${post.messageId}`;

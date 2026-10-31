@@ -39,7 +39,7 @@ import { ManualImportAdapter } from '../sources/manual-adapter.js';
 import { TelegramWebAdapter } from '../sources/telegram-web-adapter.js';
 import { formatVerbatim } from '../notifications/formatter.js';
 import { evaluate, profileFromDb } from '../matching/engine.js';
-import { config } from '../config/index.js';
+import { config, getMonitoredChannels, parseChannelHandle, type ChannelInfo } from '../config/index.js';
 import { logger } from '../observability/logger.js';
 
 export const removeKeyboardMarkup = { remove_keyboard: true as const };
@@ -51,11 +51,16 @@ export function getWelcomeText(): string {
 export function getStartActionText(): string {
   return (
     `⚡ <b>Job Watcher Active</b>\n\n` +
-    `Monitoring <b>@freelance_ethio</b> for technical roles.\n\n` +
+    `Monitoring Ethiopian job channels for technical roles:\n` +
+    `• @freelance_ethio\n` +
+    `• @DagmawiBabiJobs (Technical)\n` +
+    `• @ethiojobsofficial\n` +
+    `• @qena_jobs\n\n` +
     `<b>Commands:</b>\n` +
-    `• /fetch — Screen recent posts (50, 100, 150, 200)\n` +
+    `• /fetch — Screen recent posts by channel or across all channels\n` +
     `• /reports — Toggle 15-minute scan reports (ON/OFF)\n` +
-    `• /status — Check status & daily report\n` +
+    `• /status — Check status, channel breakdown & feedback\n` +
+    `• /sources — View monitored channel details\n` +
     `• /profile — View your profile\n` +
     `• /clear — Clear chat history\n` +
     `• /help — Help & instructions`
@@ -356,55 +361,137 @@ export function createBot(
   bot.command('clear', handleClear);
   bot.hears('🧹 Clear Chat', handleClear);
 
-  // ── /fetch — On-demand custom posts fetcher (50, 100, 150, 200) ──────────
-  const fetchOptionsKeyboard = new InlineKeyboard()
-    .text('50 Posts', 'fetch:50')
-    .text('100 Posts', 'fetch:100')
-    .row()
-    .text('150 Posts', 'fetch:150')
-    .text('200 Posts', 'fetch:200')
-    .row()
-    .text('❌ Cancel', 'confirm:cancel');
+  // ── /fetch — Interactive On-demand channel & quantity posts fetcher ───────
+  const buildChannelSelectionKeyboard = () => {
+    const channels = getMonitoredChannels();
+    const kb = new InlineKeyboard().text('🌐 All Channels', 'fetch_ch:all').row();
 
-  const showFetchMenu = async (ctx: Context) => {
-    await ctx.reply(
-      '📥 <b>On-Demand Job Screening</b>\n\n' +
-        'How many recent posts from <b>@freelance_ethio</b> would you like to screen?',
-      {
-        parse_mode: 'HTML',
-        reply_markup: fetchOptionsKeyboard,
-      },
-    );
+    for (let i = 0; i < channels.length; i += 2) {
+      const ch1 = channels[i]!;
+      kb.text(`📡 ${ch1.name}`, `fetch_ch:${ch1.handle}`);
+      if (i + 1 < channels.length) {
+        const ch2 = channels[i + 1]!;
+        kb.text(`📡 ${ch2.name}`, `fetch_ch:${ch2.handle}`);
+      }
+      kb.row();
+    }
+    kb.text('❌ Cancel', 'confirm:cancel');
+    return kb;
   };
 
-  const executeFetch = async (ctx: Context, count = 50) => {
-    const validCount = Math.min(Math.max(count, 10), 500);
+  const buildQuantityKeyboard = (targetHandle: string) => {
+    return new InlineKeyboard()
+      .text('50 Posts', `fetch_run:${targetHandle}:50`)
+      .text('100 Posts', `fetch_run:${targetHandle}:100`)
+      .row()
+      .text('150 Posts', `fetch_run:${targetHandle}:150`)
+      .text('200 Posts', `fetch_run:${targetHandle}:200`)
+      .row()
+      .text('🔙 Back to Channels', 'fetch_back')
+      .text('❌ Cancel', 'confirm:cancel');
+  };
+
+  const showFetchMenu = async (ctx: Context, editExisting = false) => {
+    const channels = getMonitoredChannels();
+    const channelList = channels.map(c => `• <b>${c.name}</b>`).join('\n');
+    const text =
+      `📥 <b>On-Demand Job Screening</b>\n\n` +
+      `Select a channel to fetch recent posts from, or screen across all channels:\n\n` +
+      `${channelList}`;
+
+    const replyMarkup = buildChannelSelectionKeyboard();
+
+    if (editExisting && ctx.callbackQuery) {
+      try {
+        await ctx.editMessageText(text, {
+          parse_mode: 'HTML',
+          reply_markup: replyMarkup,
+        });
+        return;
+      } catch {
+        // Fall back to reply
+      }
+    }
+
+    await ctx.reply(text, {
+      parse_mode: 'HTML',
+      reply_markup: replyMarkup,
+    });
+  };
+
+  const showQuantityMenu = async (ctx: Context, targetHandle: string) => {
+    const channels = getMonitoredChannels();
+    const targetLabel =
+      targetHandle === 'all'
+        ? '🌐 All Channels'
+        : channels.find(c => c.handle.toLowerCase() === targetHandle.toLowerCase())?.name ?? `@${targetHandle}`;
+
+    const text =
+      `📥 <b>Target:</b> ${targetLabel}\n\n` +
+      `Select how many recent posts to screen (50, 100, 150, or 200):`;
+
+    const replyMarkup = buildQuantityKeyboard(targetHandle);
 
     if (ctx.callbackQuery) {
       try {
-        await ctx.editMessageText(
-          `⏳ <b>Fetching and screening the ${validCount} most recent posts from @freelance_ethio...</b>`,
-          { parse_mode: 'HTML' },
-        );
+        await ctx.editMessageText(text, {
+          parse_mode: 'HTML',
+          reply_markup: replyMarkup,
+        });
+        return;
       } catch {
-        await ctx.reply(
-          `⏳ <b>Fetching and screening the ${validCount} most recent posts from @freelance_ethio...</b>`,
-          { parse_mode: 'HTML' },
-        );
+        // Fall back to reply
+      }
+    }
+
+    await ctx.reply(text, {
+      parse_mode: 'HTML',
+      reply_markup: replyMarkup,
+    });
+  };
+
+  const executeFetch = async (ctx: Context, target = 'all', count = 50) => {
+    const validCount = Math.min(Math.max(count, 10), 500);
+    const channels = getMonitoredChannels();
+
+    // Determine target channels to scan
+    const targetsToScan: ChannelInfo[] =
+      target === 'all'
+        ? channels
+        : channels.filter(
+            c => c.handle.toLowerCase() === target.toLowerCase(),
+          );
+
+    if (targetsToScan.length === 0) {
+      const cleanHandle = parseChannelHandle(target);
+      targetsToScan.push({
+        handle: cleanHandle,
+        name: `@${cleanHandle}`,
+        webUrl: `https://t.me/s/${cleanHandle}`,
+        publicUrl: `https://t.me/${cleanHandle}`,
+        sourceId: `telegram-web:${cleanHandle}`,
+        displayName: `@${cleanHandle}`,
+      });
+    }
+
+    const targetLabel =
+      target === 'all'
+        ? `all ${targetsToScan.length} channels`
+        : targetsToScan[0]?.name ?? `@${target}`;
+
+    const progressMsg = `⏳ <b>Fetching and screening the ${validCount} most recent posts from ${targetLabel}...</b>`;
+
+    if (ctx.callbackQuery) {
+      try {
+        await ctx.editMessageText(progressMsg, { parse_mode: 'HTML' });
+      } catch {
+        await ctx.reply(progressMsg, { parse_mode: 'HTML' });
       }
     } else {
-      await ctx.reply(
-        `⏳ <b>Fetching and screening the ${validCount} most recent posts from @freelance_ethio...</b>`,
-        { parse_mode: 'HTML' },
-      );
+      await ctx.reply(progressMsg, { parse_mode: 'HTML' });
     }
 
     try {
-      const channelUrl =
-        config.TELEGRAM_CHANNEL_URL ?? 'https://t.me/s/freelance_ethio';
-      const adapter = new TelegramWebAdapter(channelUrl, db);
-      const rawPosts = await adapter.fetchRecent(validCount);
-
       const activeProfileRow = profileRepo.getActive();
       if (!activeProfileRow) {
         await ctx.reply('⚠️ No active profile found.');
@@ -412,132 +499,175 @@ export function createBot(
       }
       const profile = profileFromDb(activeProfileRow);
 
-      let matchesCount = 0;
-      let evaluatedCount = 0;
+      let totalEvaluated = 0;
+      let totalMatches = 0;
+      const channelBreakdowns: { name: string; evaluated: number; matches: number }[] = [];
 
-      for (const raw of rawPosts) {
-        evaluatedCount++;
-        // Ensure message exists in database
-        const ingestRes = await ingestionService.ingestMessage(raw);
-        const existingMsg =
-          ingestRes.message ??
-          messagesRepo.findBySourceAndExternalId(raw.sourceId, raw.externalId);
+      for (const targetChannel of targetsToScan) {
+        const adapter = new TelegramWebAdapter(targetChannel.webUrl, db);
+        const rawPosts = await adapter.fetchRecent(validCount);
 
-        if (!existingMsg) {
-          logger.warn(
-            { raw },
-            'Could not resolve message row for on-demand fetch',
-          );
-          continue;
-        }
+        let channelEvaluated = 0;
+        let channelMatches = 0;
 
-        const msgId = existingMsg.id;
+        for (const raw of rawPosts) {
+          channelEvaluated++;
+          totalEvaluated++;
 
-        // Skip if this message was already evaluated before
-        const existingEval = evaluationsRepo.findByMessageId(msgId);
-        if (existingEval) {
-          if (existingEval.verdict === 'match') {
-            matchesCount++;
+          // Ensure message exists in database
+          const ingestRes = await ingestionService.ingestMessage(raw);
+          const existingMsg =
+            ingestRes.message ??
+            messagesRepo.findBySourceAndExternalId(raw.sourceId, raw.externalId);
+
+          if (!existingMsg) {
+            logger.warn(
+              { raw },
+              'Could not resolve message row for on-demand fetch',
+            );
+            continue;
           }
-          continue;
+
+          const msgId = existingMsg.id;
+
+          // Skip if this message was already evaluated before
+          const existingEval = evaluationsRepo.findByMessageId(msgId);
+          if (existingEval) {
+            if (existingEval.verdict === 'match') {
+              channelMatches++;
+              totalMatches++;
+            }
+            continue;
+          }
+
+          // Evaluate with strict tech title filter
+          const evalRes = evaluate(raw.text, profile);
+
+          const evalRow = evaluationsRepo.insert({
+            messageId: msgId,
+            profileVersion: profile.version,
+            ruleEngineVersion: evalRes.ruleEngineVersion,
+            isJobAnnouncement: evalRes.isJobAnnouncement,
+            extractedTitle: evalRes.extracted.title,
+            extractedCompany: evalRes.extracted.company,
+            extractedLocation: evalRes.extracted.location,
+            extractedWorkMode: evalRes.extracted.workMode,
+            extractedEmploymentType: evalRes.extracted.employmentType,
+            extractedDeadline: evalRes.extracted.deadline,
+            extractedApplyMethod: evalRes.extracted.applyMethod,
+            matchedSkills: evalRes.matchedSkills,
+            matchedRoles: evalRes.matchedRoles,
+            missingInfo: evalRes.missingInfo,
+            triggeredExclusions: evalRes.triggeredExclusions,
+            score: evalRes.score,
+            verdict: evalRes.verdict,
+            matchReasons: evalRes.matchReasons,
+          });
+
+          // Mark message in database so background coordinator will never re-evaluate it
+          const finalStatus =
+            evalRes.verdict === 'skipped' ? 'skipped' : 'evaluated';
+          messagesRepo.updateStatus(msgId, finalStatus);
+
+          if (evalRes.verdict === 'match') {
+            channelMatches++;
+            totalMatches++;
+
+            // Create notification with delivered status directly so deliveryService won't duplicate it
+            const now = new Date().toISOString();
+            const notif = db
+              .insert(notifications)
+              .values({
+                evaluationId: evalRow.id,
+                status: 'delivered',
+                attemptCount: 1,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning()
+              .get();
+
+            const { text, keyboard } = formatVerbatim(
+              raw.text,
+              raw.links,
+              notif.id,
+              targetChannel.handle,
+            );
+
+            try {
+              const sent = await bot.api.sendMessage(ownerChatId, text, {
+                parse_mode: 'HTML',
+                reply_markup: keyboard,
+              });
+              notificationsRepo.updateStatus(notif.id, 'delivered', {
+                telegramMessageId: sent.message_id,
+              });
+            } catch (err) {
+              logger.warn({ err }, 'Failed to deliver on-demand notification');
+            }
+          }
         }
 
-        // Evaluate with strict tech title filter
-        const evalRes = evaluate(raw.text, profile);
-
-        const evalRow = evaluationsRepo.insert({
-          messageId: msgId,
-          profileVersion: profile.version,
-          ruleEngineVersion: evalRes.ruleEngineVersion,
-          isJobAnnouncement: evalRes.isJobAnnouncement,
-          extractedTitle: evalRes.extracted.title,
-          extractedCompany: evalRes.extracted.company,
-          extractedLocation: evalRes.extracted.location,
-          extractedWorkMode: evalRes.extracted.workMode,
-          extractedEmploymentType: evalRes.extracted.employmentType,
-          extractedDeadline: evalRes.extracted.deadline,
-          extractedApplyMethod: evalRes.extracted.applyMethod,
-          matchedSkills: evalRes.matchedSkills,
-          matchedRoles: evalRes.matchedRoles,
-          missingInfo: evalRes.missingInfo,
-          triggeredExclusions: evalRes.triggeredExclusions,
-          score: evalRes.score,
-          verdict: evalRes.verdict,
-          matchReasons: evalRes.matchReasons,
+        channelBreakdowns.push({
+          name: targetChannel.name,
+          evaluated: channelEvaluated,
+          matches: channelMatches,
         });
-
-        // Mark message in database so background coordinator will never re-evaluate it
-        const finalStatus =
-          evalRes.verdict === 'skipped' ? 'skipped' : 'evaluated';
-        messagesRepo.updateStatus(msgId, finalStatus);
-
-        if (evalRes.verdict === 'match') {
-          matchesCount++;
-
-          // Create notification with delivered status directly so deliveryService won't duplicate it
-          const now = new Date().toISOString();
-          const notif = db
-            .insert(notifications)
-            .values({
-              evaluationId: evalRow.id,
-              status: 'delivered',
-              attemptCount: 1,
-              createdAt: now,
-              updatedAt: now,
-            })
-            .returning()
-            .get();
-
-          const { text, keyboard } = formatVerbatim(
-            raw.text,
-            raw.links,
-            notif.id,
-          );
-
-          try {
-            const sent = await bot.api.sendMessage(ownerChatId, text, {
-              parse_mode: 'HTML',
-              reply_markup: keyboard,
-            });
-            notificationsRepo.updateStatus(notif.id, 'delivered', {
-              telegramMessageId: sent.message_id,
-            });
-          } catch (err) {
-            logger.warn({ err }, 'Failed to deliver on-demand notification');
-          }
-        }
       }
 
-      await bot.api.sendMessage(
-        ownerChatId,
+      let summaryText =
         `✅ <b>Scan Complete!</b>\n\n` +
-          `• Evaluated: <b>${evaluatedCount}</b> recent channel posts\n` +
-          `• Qualified Tech Jobs: <b>${matchesCount}</b> delivered to your chat\n` +
-          `• Filter Rule: Strict Technical Title only`,
-        { parse_mode: 'HTML' },
-      );
+        `📡 <b>Target:</b> ${target === 'all' ? `🌐 All Channels (${targetsToScan.length})` : targetLabel}\n` +
+        `• <b>Total Posts Evaluated:</b> ${totalEvaluated}\n` +
+        `• <b>Qualified Tech Jobs:</b> ${totalMatches} delivered to your chat\n` +
+        `• <b>Non-tech / Filtered:</b> ${totalEvaluated - totalMatches}\n` +
+        `• <b>Filter Rule:</b> Strict Technical Title only`;
+
+      if (targetsToScan.length > 1) {
+        const breakdownLines = channelBreakdowns
+          .map(b => `• <b>${b.name}:</b> ${b.evaluated} scanned (${b.matches} qualified tech)`)
+          .join('\n');
+        summaryText += `\n\n<b>Per-Channel Breakdown:</b>\n${breakdownLines}`;
+      }
+
+      await bot.api.sendMessage(ownerChatId, summaryText, { parse_mode: 'HTML' });
     } catch (err) {
       logger.error({ err }, 'Error during on-demand fetch');
       await ctx.reply(
-        '⚠️ Error fetching posts from channel. Please check your internet connection and try again.',
+        '⚠️ Error fetching posts from channel(s). Please check your internet connection and try again.',
       );
     }
   };
 
   const handleFetchCommand = async (ctx: Context) => {
-    const textArg = ctx.message?.text?.split(' ')[1];
-    if (textArg && !isNaN(parseInt(textArg, 10))) {
-      await executeFetch(ctx, parseInt(textArg, 10));
-    } else {
+    const parts = ctx.message?.text?.trim().split(/\s+/) ?? [];
+    // Case 1: /fetch without args -> interactive menu
+    if (parts.length <= 1) {
       await showFetchMenu(ctx);
+      return;
     }
+    // Case 2: /fetch 50 -> all channels
+    if (parts.length === 2 && !isNaN(parseInt(parts[1]!, 10))) {
+      await executeFetch(ctx, 'all', parseInt(parts[1]!, 10));
+      return;
+    }
+    // Case 3: /fetch @channel 100 or /fetch channel 100
+    if (parts.length >= 2) {
+      const targetArg = parts[1]!;
+      const countArg = parts[2] ? parseInt(parts[2], 10) : 50;
+      const cleanHandle = parseChannelHandle(targetArg);
+      await executeFetch(ctx, cleanHandle, isNaN(countArg) ? 50 : countArg);
+      return;
+    }
+
+    await showFetchMenu(ctx);
   };
 
   bot.command('fetch', handleFetchCommand);
-  bot.command('fetch50', ctx => executeFetch(ctx, 50));
-  bot.hears('📥 Fetch Recent Jobs', showFetchMenu);
-  bot.hears('⚡ Fetch Recent Jobs', showFetchMenu);
-  bot.hears('📥 Fetch 50 Recent Jobs', ctx => executeFetch(ctx, 50));
+  bot.command('fetch50', ctx => executeFetch(ctx, 'all', 50));
+  bot.hears('📥 Fetch Recent Jobs', ctx => showFetchMenu(ctx));
+  bot.hears('⚡ Fetch Recent Jobs', ctx => showFetchMenu(ctx));
+  bot.hears('📥 Fetch 50 Recent Jobs', ctx => executeFetch(ctx, 'all', 50));
 
   // ── /help ──────────────────────────────────────────────────────────────────
   bot.command('help', async ctx => {
@@ -600,13 +730,16 @@ export function createBot(
   const handleStatus = async (ctx: Context) => {
     const paused = appStateRepo.get('paused') === 'true';
     const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
+    const channels = getMonitoredChannels();
 
-    // Daily metrics (today)
+    // Daily metrics (today in UTC+3 East Africa Time)
     const todayFetched =
       db
         .select({ count: sql<number>`count(*)` })
         .from(sourceMessages)
-        .where(sql`date(${sourceMessages.fetchedAt}) = date('now')`)
+        .where(
+          sql`date(${sourceMessages.fetchedAt}, '+3 hours') = date('now', '+3 hours')`,
+        )
         .get()?.count ?? 0;
 
     const todayMatches =
@@ -614,7 +747,7 @@ export function createBot(
         .select({ count: sql<number>`count(*)` })
         .from(evaluations)
         .where(
-          sql`date(${evaluations.evaluatedAt}) = date('now') and ${evaluations.verdict} = 'match'`,
+          sql`date(${evaluations.evaluatedAt}, '+3 hours') = date('now', '+3 hours') and ${evaluations.verdict} = 'match'`,
         )
         .get()?.count ?? 0;
 
@@ -623,7 +756,7 @@ export function createBot(
         .select({ count: sql<number>`count(*)` })
         .from(evaluations)
         .where(
-          sql`date(${evaluations.evaluatedAt}) = date('now') and ${evaluations.verdict} != 'match'`,
+          sql`date(${evaluations.evaluatedAt}, '+3 hours') = date('now', '+3 hours') and ${evaluations.verdict} != 'match'`,
         )
         .get()?.count ?? 0;
 
@@ -658,14 +791,33 @@ export function createBot(
     const appliedCount =
       feedbackRows.find(r => r.rating === 'applied')?.count ?? 0;
 
+    // Scanned count per channel
+    const perSourceCounts = db
+      .select({
+        sourceId: sourceMessages.sourceId,
+        count: sql<number>`count(*)`,
+      })
+      .from(sourceMessages)
+      .groupBy(sourceMessages.sourceId)
+      .all();
+
+    const channelListText = channels
+      .map(c => {
+        const found = perSourceCounts.find(s => s.sourceId === c.sourceId);
+        const countStr = found ? ` (<b>${found.count}</b> scanned)` : '';
+        return `• <b>${c.name}</b>${countStr}`;
+      })
+      .join('\n');
+
     const text =
       `📊 <b>AfriPersonal Status</b>\n\n` +
       `⚙️ <b>System:</b> ${paused ? '⏸️ PAUSED' : '▶️ RUNNING'}\n` +
-      `📡 <b>Channel Watcher:</b> @freelance_ethio (Every 15m)\n` +
       `⏱️ <b>15m Reports:</b> ${reportsOn ? '🟢 ON' : '🔴 OFF (/reports to toggle)'}\n\n` +
-      `📅 <b>Today's Report:</b>\n` +
+      `📡 <b>Channels Monitored (${channels.length}):</b>\n` +
+      `${channelListText}\n\n` +
+      `📅 <b>Today's Activity (EAT):</b>\n` +
       `• Posts Scanned: <b>${todayFetched}</b>\n` +
-      `• Matches Found: <b>${todayMatches}</b>\n` +
+      `• Tech Matches: <b>${todayMatches}</b>\n` +
       `• Rejected / Clutter: <b>${todayRejected}</b>\n\n` +
       `📈 <b>All-Time History & Feedback:</b>\n` +
       `• Total Scanned: <b>${totalRead}</b>\n` +
@@ -936,16 +1088,38 @@ export function createBot(
       return;
     }
 
+    if (data.startsWith('fetch_ch:')) {
+      const handle = data.replace('fetch_ch:', '');
+      await ctx.answerCallbackQuery();
+      await showQuantityMenu(ctx, handle);
+      return;
+    }
+
+    if (data === 'fetch_back') {
+      await ctx.answerCallbackQuery();
+      await showFetchMenu(ctx, true);
+      return;
+    }
+
+    if (data.startsWith('fetch_run:')) {
+      const parts = data.split(':');
+      const target = parts[1] ?? 'all';
+      const count = parseInt(parts[2] ?? '50', 10);
+      await ctx.answerCallbackQuery({ text: `Starting ${count} post scan...` });
+      await executeFetch(ctx, target, count);
+      return;
+    }
+
     if (data === 'action:fetch50') {
       await ctx.answerCallbackQuery({ text: 'Starting 50 post scan...' });
-      await executeFetch(ctx, 50);
+      await executeFetch(ctx, 'all', 50);
       return;
     }
 
     if (data.startsWith('fetch:')) {
       const count = parseInt(data.split(':')[1] ?? '50', 10);
       await ctx.answerCallbackQuery({ text: `Starting ${count} post scan...` });
-      await executeFetch(ctx, count);
+      await executeFetch(ctx, 'all', count);
       return;
     }
 
@@ -1023,10 +1197,17 @@ export function createBot(
       return;
     }
 
-    feedbackRepo.insert(
-      notifId,
-      rating as 'relevant' | 'not_relevant' | 'applied',
-    );
+    try {
+      feedbackRepo.insert(
+        notifId,
+        rating as 'relevant' | 'not_relevant' | 'applied',
+      );
+    } catch (err) {
+      logger.warn(
+        { notifId, rating, err },
+        'Could not save feedback (notification might be from previous session before redeploy)',
+      );
+    }
 
     const labels: Record<string, string> = {
       relevant: '👍 Marked as Relevant',

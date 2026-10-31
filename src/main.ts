@@ -12,7 +12,7 @@
  *             DB_PATH, NOTIFICATION_THRESHOLD, DATA_RETENTION_DAYS
  */
 import http from 'node:http';
-import { config } from './config/index.js';
+import { config, getMonitoredChannels } from './config/index.js';
 import { logger } from './observability/logger.js';
 import { createDb } from './database/client.js';
 import { runMigrations } from './database/migrate.js';
@@ -58,22 +58,24 @@ async function main(): Promise<void> {
     retentionDays: config.DATA_RETENTION_DAYS,
   });
 
-  // 5. Initialize AdapterPoller if TELEGRAM_CHANNEL_URL is configured
+  // 5. Initialize AdapterPoller for monitored channels
   let poller: AdapterPoller | null = null;
   const appStateRepo = createAppStateRepo(db);
+  const monitoredChannels = getMonitoredChannels();
 
-  if (config.TELEGRAM_CHANNEL_URL) {
-    const telegramWebAdapter = new TelegramWebAdapter(config.TELEGRAM_CHANNEL_URL, db);
-    const channelName =
-      config.TELEGRAM_CHANNEL_URL.split('/').pop() ?? 'freelance_ethio';
+  if (monitoredChannels.length > 0) {
+    const adapters = monitoredChannels.map(
+      (ch) => new TelegramWebAdapter(ch.webUrl, db),
+    );
 
-    poller = new AdapterPoller(db, [telegramWebAdapter], {
+    poller = new AdapterPoller(db, adapters, {
       intervalMs: config.POLLING_INTERVAL_MS,
-      onCycleComplete: async (stats) => {
+      onBatchComplete: async (batchStats) => {
         // Run coordinator evaluation right away so pending messages are evaluated and delivered
         const evalSummary = await coordinator.runCycle();
         const isPaused = appStateRepo.get('paused') === 'true';
-        const reportsEnabled = appStateRepo.get('periodic_reports_enabled') !== 'false';
+        const reportsEnabled =
+          appStateRepo.get('periodic_reports_enabled') !== 'false';
 
         // When reports are turned OFF, only relevant job notifications are delivered above.
         // We skip sending the periodic 15-minute summary message.
@@ -83,18 +85,31 @@ async function main(): Promise<void> {
         }
 
         let reportText: string;
-        if (stats.newPosts === 0) {
+        const totalNew = batchStats.totalNewPosts;
+        const rejected =
+          evalSummary.noMatch + evalSummary.skipped + evalSummary.excluded;
+
+        if (totalNew === 0) {
+          const channelNames = monitoredChannels.map((c) => c.name).join(', ');
           reportText =
             `⏱️ <b>15-Minute Scan Report</b>\n` +
-            `📡 <b>Channel:</b> @${channelName}\n\n` +
+            `📡 <b>Channels Monitored (${monitoredChannels.length}):</b>\n${channelNames}\n\n` +
             `• <b>New Posts:</b> 0\n` +
             `• <b>Status:</b> All caught up (no new posts)`;
         } else {
-          const rejected = evalSummary.skipped + evalSummary.excluded;
+          // Channel-by-channel breakdown
+          const breakdown = batchStats.results
+            .map((r) => {
+              const handle = r.sourceId.replace('telegram-web:', '');
+              return `• <b>@${handle}:</b> ${r.newPosts} new post${r.newPosts === 1 ? '' : 's'}`;
+            })
+            .join('\n');
+
           reportText =
             `⏱️ <b>15-Minute Scan Report</b>\n` +
-            `📡 <b>Channel:</b> @${channelName}\n\n` +
-            `• <b>New Posts:</b> ${stats.newPosts}\n` +
+            `📡 <b>Channels Breakdown:</b>\n${breakdown}\n\n` +
+            `📊 <b>Screening Summary:</b>\n` +
+            `• <b>Total New Posts:</b> ${totalNew}\n` +
             `• <b>Relevant:</b> ${evalSummary.matches}` +
             (evalSummary.matches > 0 ? ' 🎯 (alerted above)' : '') +
             `\n• <b>Rejected:</b> ${rejected}`;
@@ -113,12 +128,16 @@ async function main(): Promise<void> {
         }
       },
     });
+
     logger.info(
-      { channelUrl: config.TELEGRAM_CHANNEL_URL, intervalMs: config.POLLING_INTERVAL_MS },
-      'Automated channel polling enabled with 15-minute periodic scan reports',
+      {
+        channels: monitoredChannels.map((c) => c.name),
+        intervalMs: config.POLLING_INTERVAL_MS,
+      },
+      'Automated multi-channel polling enabled with 15-minute periodic scan reports',
     );
   } else {
-    logger.info('TELEGRAM_CHANNEL_URL not set — running in manual import mode only');
+    logger.info('No channels configured — running in manual import mode only');
   }
 
   // Start coordinator background loop
@@ -197,9 +216,10 @@ async function main(): Promise<void> {
       try {
         await bot.api.setMyCommands([
           { command: 'start', description: 'Start & welcome menu' },
-          { command: 'fetch', description: 'Screen 50, 100, 150, or 200 posts' },
-          { command: 'reports', description: 'Toggle 15m scan reports' },
-          { command: 'status', description: 'Check status & daily report' },
+          { command: 'fetch', description: 'Screen posts by channel (50-200)' },
+          { command: 'reports', description: 'Toggle 15m scan reports (ON/OFF)' },
+          { command: 'status', description: 'Check status, metrics & feedback' },
+          { command: 'sources', description: 'View monitored channels' },
           { command: 'profile', description: 'View career profile' },
           { command: 'clear', description: 'Clear chat' },
           { command: 'help', description: 'Help & instructions' },
@@ -208,7 +228,7 @@ async function main(): Promise<void> {
           '👋 Welcome to AfriPersonal!\nYour automated personal technical job watcher for Ethiopian channels.',
         );
         await bot.api.setMyShortDescription(
-          'Automated technical job watcher for @freelance_ethio',
+          'Automated technical job watcher for Ethiopian channels',
         );
       } catch (err) {
         logger.warn({ err }, 'Failed to set Telegram bot commands menu');

@@ -22,6 +22,16 @@ import { IngestionService } from './ingestion.js';
 import type { SourceAdapter } from '../sources/types.js';
 import { logger } from '../observability/logger.js';
 
+export interface AdapterPollCycleStats {
+  results: {
+    sourceId: string;
+    totalFetched: number;
+    newPosts: number;
+    duplicates: number;
+  }[];
+  totalNewPosts: number;
+}
+
 export interface AdapterPollerOptions {
   /** Polling interval in milliseconds. Default: 900_000 (15 minutes). */
   intervalMs?: number;
@@ -34,6 +44,8 @@ export interface AdapterPollerOptions {
     newPosts: number;
     duplicates: number;
   }) => Promise<void> | void;
+  /** Optional callback invoked after all adapters in a batch complete */
+  onBatchComplete?: (stats: AdapterPollCycleStats) => Promise<void> | void;
 }
 
 export class AdapterPoller {
@@ -41,6 +53,7 @@ export class AdapterPoller {
   private readonly intervalMs: number;
   private readonly jitterMs: number;
   private readonly onCycleComplete?: AdapterPollerOptions['onCycleComplete'];
+  private readonly onBatchComplete?: AdapterPollerOptions['onBatchComplete'];
 
   private isRunning = false;
   private timer: NodeJS.Timeout | null = null;
@@ -54,6 +67,7 @@ export class AdapterPoller {
     this.intervalMs = opts?.intervalMs ?? 900_000;
     this.jitterMs = opts?.jitterMs ?? 30_000;
     this.onCycleComplete = opts?.onCycleComplete;
+    this.onBatchComplete = opts?.onBatchComplete;
   }
 
   /**
@@ -131,9 +145,20 @@ export class AdapterPoller {
       'AdapterPoller: poll cycle started',
     );
 
+    const cycleResults: AdapterPollCycleStats['results'] = [];
+    let totalNewPosts = 0;
+
     for (const adapter of this.adapters) {
       try {
         const result = await this.ingestionService.ingestFromAdapter(adapter);
+        cycleResults.push({
+          sourceId: result.sourceId,
+          totalFetched: result.totalFetched,
+          newPosts: result.insertedCount,
+          duplicates: result.duplicateCount,
+        });
+        totalNewPosts += result.insertedCount;
+
         logger.info(
           {
             sourceId: result.sourceId,
@@ -165,6 +190,20 @@ export class AdapterPoller {
         logger.error(
           { sourceId: adapter.sourceId, err },
           'AdapterPoller: adapter ingestion threw unexpectedly',
+        );
+      }
+    }
+
+    if (this.onBatchComplete) {
+      try {
+        await this.onBatchComplete({
+          results: cycleResults,
+          totalNewPosts,
+        });
+      } catch (batchErr) {
+        logger.error(
+          { err: batchErr },
+          'AdapterPoller: onBatchComplete callback failed',
         );
       }
     }
