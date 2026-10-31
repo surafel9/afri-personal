@@ -433,43 +433,60 @@ export function createBot(
 
         const msgId = existingMsg.id;
 
+        // Skip if this message was already evaluated before
+        const existingEval = evaluationsRepo.findByMessageId(msgId);
+        if (existingEval) {
+          if (existingEval.verdict === 'match') {
+            matchesCount++;
+          }
+          continue;
+        }
+
         // Evaluate with strict tech title filter
         const evalRes = evaluate(raw.text, profile);
 
+        const evalRow = evaluationsRepo.insert({
+          messageId: msgId,
+          profileVersion: profile.version,
+          ruleEngineVersion: evalRes.ruleEngineVersion,
+          isJobAnnouncement: evalRes.isJobAnnouncement,
+          extractedTitle: evalRes.extracted.title,
+          extractedCompany: evalRes.extracted.company,
+          extractedLocation: evalRes.extracted.location,
+          extractedWorkMode: evalRes.extracted.workMode,
+          extractedEmploymentType: evalRes.extracted.employmentType,
+          extractedDeadline: evalRes.extracted.deadline,
+          extractedApplyMethod: evalRes.extracted.applyMethod,
+          matchedSkills: evalRes.matchedSkills,
+          matchedRoles: evalRes.matchedRoles,
+          missingInfo: evalRes.missingInfo,
+          triggeredExclusions: evalRes.triggeredExclusions,
+          score: evalRes.score,
+          verdict: evalRes.verdict,
+          matchReasons: evalRes.matchReasons,
+        });
+
+        // Mark message in database so background coordinator will never re-evaluate it
+        const finalStatus =
+          evalRes.verdict === 'skipped' ? 'skipped' : 'evaluated';
+        messagesRepo.updateStatus(msgId, finalStatus);
+
         if (evalRes.verdict === 'match') {
           matchesCount++;
-          // Check if this post was already notified previously to avoid duplicate cards
-          const existingEval = evaluationsRepo.findByMessageId(msgId);
-          if (existingEval) {
-            const existingNotif = notificationsRepo.findByEvaluationId(existingEval.id);
-            if (existingNotif && existingNotif.status === 'delivered') {
-              continue; // Skip duplicate notification delivery
-            }
-          }
 
-          // Queue notification
-          const notif = notificationsRepo.queue(
-            evaluationsRepo.insert({
-              messageId: msgId,
-              profileVersion: profile.version,
-              ruleEngineVersion: evalRes.ruleEngineVersion,
-              isJobAnnouncement: evalRes.isJobAnnouncement,
-              extractedTitle: evalRes.extracted.title,
-              extractedCompany: evalRes.extracted.company,
-              extractedLocation: evalRes.extracted.location,
-              extractedWorkMode: evalRes.extracted.workMode,
-              extractedEmploymentType: evalRes.extracted.employmentType,
-              extractedDeadline: evalRes.extracted.deadline,
-              extractedApplyMethod: evalRes.extracted.applyMethod,
-              matchedSkills: evalRes.matchedSkills,
-              matchedRoles: evalRes.matchedRoles,
-              missingInfo: evalRes.missingInfo,
-              triggeredExclusions: evalRes.triggeredExclusions,
-              score: evalRes.score,
-              verdict: evalRes.verdict,
-              matchReasons: evalRes.matchReasons,
-            }).id,
-          );
+          // Create notification with delivered status directly so deliveryService won't duplicate it
+          const now = new Date().toISOString();
+          const notif = db
+            .insert(notifications)
+            .values({
+              evaluationId: evalRow.id,
+              status: 'delivered',
+              attemptCount: 1,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .returning()
+            .get();
 
           const { text, keyboard } = formatVerbatim(
             raw.text,
