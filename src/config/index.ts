@@ -32,8 +32,11 @@ const envSchema = z.object({
     .pipe(z.number().int().min(1)),
   // ── Channel polling ────────────────────────────────────────────────────────
   // Public Telegram channel preview URL to poll for job posts.
-  // Leave empty to disable automated polling (manual import only).
-  TELEGRAM_CHANNEL_URL: z.string().url().optional(),
+  // Defaults to Freelance Ethiopia channel.
+  TELEGRAM_CHANNEL_URL: z
+    .string()
+    .url()
+    .default('https://t.me/s/freelance_ethio'),
   // How often to poll the channel, in milliseconds. Default: 15 minutes.
   POLLING_INTERVAL_MS: z
     .string()

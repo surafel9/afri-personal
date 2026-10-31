@@ -7,16 +7,12 @@
 import { createDb } from './client.js';
 import { runMigrations } from './migrate.js';
 import { createSourcesRepo } from './repositories/sources.js';
+import type { Db } from './client.js';
 import { createProfileRepo } from './repositories/profile.js';
 
 const DB_PATH = process.env['DB_PATH'] ?? 'data/afripersonal.db';
 
-async function seed() {
-  const { db, sqlite } = createDb(DB_PATH);
-
-  // Ensure schema is up to date before seeding
-  await runMigrations(sqlite);
-
+export function seedDatabase(db: Db): void {
   const sourcesRepo = createSourcesRepo(db);
   const profileRepo = createProfileRepo(db);
 
@@ -283,12 +279,19 @@ async function seed() {
       `[seed] Active profile already exists (id=${existing.id}), skipping.`,
     );
   }
+}
 
+async function runCliSeed() {
+  const { db, sqlite } = createDb(DB_PATH);
+  await runMigrations(sqlite);
+  seedDatabase(db);
   console.log('[seed] Done.');
   sqlite.close();
 }
 
-seed().catch(err => {
-  console.error('[seed] Fatal error:', err);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('seed.ts') || process.argv[1]?.endsWith('seed.js')) {
+  runCliSeed().catch(err => {
+    console.error('[seed] Fatal error:', err);
+    process.exit(1);
+  });
+}

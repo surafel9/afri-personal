@@ -16,6 +16,7 @@ import { config } from './config/index.js';
 import { logger } from './observability/logger.js';
 import { createDb } from './database/client.js';
 import { runMigrations } from './database/migrate.js';
+import { seedDatabase } from './database/seed.js';
 import { createBot } from './bot/bot.js';
 import { NotificationDeliveryService } from './notifications/delivery.js';
 import { PipelineCoordinator } from './pipeline/coordinator.js';
@@ -35,9 +36,10 @@ async function main(): Promise<void> {
     'AfriPersonal starting',
   );
 
-  // 1. Initialize database and run migrations
+  // 1. Initialize database, run migrations, and seed default profile
   const { db, sqlite } = createDb(config.DB_PATH);
   await runMigrations(sqlite);
+  seedDatabase(db);
 
   // 2. Initialize Telegram bot
   const bot = createBot(config.BOT_TOKEN, config.OWNER_CHAT_ID, db);

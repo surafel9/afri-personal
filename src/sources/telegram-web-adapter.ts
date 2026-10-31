@@ -148,13 +148,25 @@ export class TelegramWebAdapter implements SourceAdapter {
         }
       }
 
+      const channelName = this.channelUrl.split('/').pop() ?? 'freelance_ethio';
+      const postUrl = `https://t.me/${channelName}/${post.messageId}`;
+      const uniqueLinks = [
+        postUrl,
+        ...post.links.filter(
+          (l) =>
+            l !== postUrl &&
+            !l.endsWith(`/${channelName}`) &&
+            !l.endsWith(`/${channelName}/`),
+        ),
+      ];
+
       yield {
         sourceId: this.sourceId,
         externalId: post.messageId,
         postedAt: post.postedAt,
         fetchedAt,
         text: post.text,
-        links: post.links,
+        links: uniqueLinks,
         hasMedia: false, // web preview does not expose media reliably
       };
 
@@ -321,12 +333,18 @@ function extractTimestamp(block: string): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-/** Extract all href links from the message block, excluding Telegram-internal UI links. */
+/** Extract all href links from the message text, excluding Telegram-internal UI links. */
 function extractLinks(block: string): string[] {
+  const textDivMatch =
+    /<div[^>]+class="[^"]*tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(
+      block,
+    );
+  const target = textDivMatch ? textDivMatch[1]! : block;
+
   const links: string[] = [];
   const linkRe = /href="(https?:\/\/[^"]+)"/g;
   let m: RegExpExecArray | null;
-  while ((m = linkRe.exec(block)) !== null) {
+  while ((m = linkRe.exec(target)) !== null) {
     const url = m[1]!;
     // Skip Telegram's own t.me/share URLs and tracking pixels
     if (url.includes('t.me/share') || url.includes('telegram.me/share')) continue;

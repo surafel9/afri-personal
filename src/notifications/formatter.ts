@@ -158,10 +158,19 @@ export function formatVerbatim(
   // The exact, unedited post text — HTML-escaped so it renders safely.
   parts.push(escapeHtml(rawText));
 
-  // Direct link to the original post (first link if available).
+  // Direct link to the original Telegram post and any application links
   if (originalLinks.length > 0) {
-    const firstLink = originalLinks[0]!;
-    parts.push(`🔗 <a href="${firstLink}">View original post</a>`);
+    const postLink = originalLinks[0]!;
+    const footerLinks: string[] = [
+      `🔗 <a href="${postLink}">View original Telegram post</a>`,
+    ];
+
+    const applyLinks = originalLinks.slice(1, 4);
+    for (const link of applyLinks) {
+      footerLinks.push(`👉 <a href="${link}">Apply / Link</a>`);
+    }
+
+    parts.push(footerLinks.join('\n'));
   }
 
   const text = parts.join('\n\n');

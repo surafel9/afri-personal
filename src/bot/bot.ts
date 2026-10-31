@@ -18,6 +18,7 @@ import {
   type BotConfig,
 } from 'grammy';
 import type { UserFromGetMe } from 'grammy/types';
+import { sql } from 'drizzle-orm';
 import type { Db } from '../database/client.js';
 import {
   notifications,
@@ -476,25 +477,78 @@ export function createBot(
   // ── /status ────────────────────────────────────────────────────────────────
   const handleStatus = async (ctx: Context) => {
     const paused = appStateRepo.get('paused') === 'true';
-    const pendingCount = messagesRepo.countByStatus('pending');
-    const pendingNotifs = notificationsRepo.getPending().length;
-    const sources = sourcesRepo.findAll();
 
-    const sourcesSummary = sources
-      .map(
-        s =>
-          `  • <b>${s.displayName}</b> (${s.enabled ? '🟢 enabled' : '🔴 disabled'}):\n` +
-          `    Last success: ${s.lastSuccessAt ?? 'never'}\n` +
-          (s.lastErrorMsg ? `    ⚠️ Last error: ${s.lastErrorMsg}\n` : ''),
-      )
-      .join('\n');
+    // Daily metrics (today)
+    const todayFetched =
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(sourceMessages)
+        .where(sql`date(${sourceMessages.fetchedAt}) = date('now')`)
+        .get()?.count ?? 0;
+
+    const todayMatches =
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(evaluations)
+        .where(
+          sql`date(${evaluations.evaluatedAt}) = date('now') and ${evaluations.verdict} = 'match'`,
+        )
+        .get()?.count ?? 0;
+
+    const todayRejected =
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(evaluations)
+        .where(
+          sql`date(${evaluations.evaluatedAt}) = date('now') and ${evaluations.verdict} != 'match'`,
+        )
+        .get()?.count ?? 0;
+
+    // All-time metrics
+    const totalRead =
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(sourceMessages)
+        .get()?.count ?? 0;
+
+    const totalMatches =
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(evaluations)
+        .where(sql`${evaluations.verdict} = 'match'`)
+        .get()?.count ?? 0;
+
+    // Feedback breakdown
+    const feedbackRows = db
+      .select({
+        rating: feedback.rating,
+        count: sql<number>`count(*)`,
+      })
+      .from(feedback)
+      .groupBy(feedback.rating)
+      .all();
+
+    const relevantCount =
+      feedbackRows.find(r => r.rating === 'relevant')?.count ?? 0;
+    const notRelevantCount =
+      feedbackRows.find(r => r.rating === 'not_relevant')?.count ?? 0;
+    const appliedCount =
+      feedbackRows.find(r => r.rating === 'applied')?.count ?? 0;
 
     const text =
-      `⚙️ <b>AfriPersonal Status</b>\n\n` +
-      `• <b>State:</b> ${paused ? '⏸️ PAUSED' : '▶️ RUNNING'}\n` +
-      `• <b>Pending messages to evaluate:</b> ${pendingCount}\n` +
-      `• <b>Queued notifications:</b> ${pendingNotifs}\n\n` +
-      `<b>Configured Sources:</b>\n${sourcesSummary || '  None'}`;
+      `📊 <b>AfriPersonal Status</b>\n\n` +
+      `⚙️ <b>System:</b> ${paused ? '⏸️ PAUSED' : '▶️ RUNNING'}\n` +
+      `📡 <b>Channel Watcher:</b> @freelance_ethio (Every 15m)\n\n` +
+      `📅 <b>Today's Report:</b>\n` +
+      `• Posts Scanned: <b>${todayFetched}</b>\n` +
+      `• Matches Found: <b>${todayMatches}</b>\n` +
+      `• Rejected / Clutter: <b>${todayRejected}</b>\n\n` +
+      `📈 <b>All-Time History & Feedback:</b>\n` +
+      `• Total Scanned: <b>${totalRead}</b>\n` +
+      `• Total Matches: <b>${totalMatches}</b>\n` +
+      `• 👍 Relevant: <b>${relevantCount}</b>\n` +
+      `• 👎 Not Relevant: <b>${notRelevantCount}</b>\n` +
+      `• 💼 Applied: <b>${appliedCount}</b>`;
 
     await ctx.reply(text, {
       parse_mode: 'HTML',
