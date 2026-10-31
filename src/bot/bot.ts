@@ -54,6 +54,7 @@ export function getStartActionText(): string {
     `Monitoring <b>@freelance_ethio</b> for technical roles.\n\n` +
     `<b>Commands:</b>\n` +
     `• /fetch50 — Fetch recent 50 jobs\n` +
+    `• /reports — Toggle 15-minute scan reports (ON/OFF)\n` +
     `• /status — Check status\n` +
     `• /profile — View your profile\n` +
     `• /clear — Clear chat history\n` +
@@ -474,6 +475,7 @@ export function createBot(
       `• <b>Verbatim Delivery:</b> Sends the exact original post with direct link to your DM.\n\n` +
       `<b>Commands:</b>\n` +
       `• /clear — Clear conversation and job alerts from this chat\n` +
+      `• /reports — Toggle 15-minute periodic scan reports (ON/OFF)\n` +
       `• /status — Operational health and queue depths\n` +
       `• /profile — Active career preferences and criteria\n` +
       `• /matches — Recent matched evaluations\n` +
@@ -483,9 +485,46 @@ export function createBot(
     await ctx.reply(text, { parse_mode: 'HTML' });
   });
 
+  // ── /reports — Toggle 15-minute periodic scan reports ──────────────────────
+  const handleReports = async (ctx: Context) => {
+    const textArg = ctx.message?.text?.split(' ')[1]?.toLowerCase();
+    let isEnabled = appStateRepo.get('periodic_reports_enabled') === 'true';
+
+    if (textArg === 'on') {
+      appStateRepo.set('periodic_reports_enabled', 'true');
+      isEnabled = true;
+    } else if (textArg === 'off') {
+      appStateRepo.set('periodic_reports_enabled', 'false');
+      isEnabled = false;
+    } else if (textArg === 'toggle') {
+      isEnabled = !isEnabled;
+      appStateRepo.set('periodic_reports_enabled', isEnabled ? 'true' : 'false');
+    }
+
+    const keyboard = new InlineKeyboard().text(
+      isEnabled ? '🔴 Turn OFF Reports' : '🟢 Turn ON Reports',
+      isEnabled ? 'reports:off' : 'reports:on',
+    );
+
+    await ctx.reply(
+      `⏱️ <b>15-Minute Scan Reports:</b> ${isEnabled ? '🟢 <b>ON</b>' : '🔴 <b>OFF</b>'}\n\n` +
+        (isEnabled
+          ? `• You will receive a summary every 15 minutes showing new posts, relevant jobs, and rejected clutter.\n• You will also receive job cards whenever matches are found.`
+          : `• Silent mode active: You will <b>only</b> receive messages when a new relevant tech job is found.\n• Periodic scan summaries are muted.`),
+      {
+        parse_mode: 'HTML',
+        reply_markup: keyboard,
+      },
+    );
+  };
+
+  bot.command('reports', handleReports);
+  bot.hears('⏱️ Reports', handleReports);
+
   // ── /status ────────────────────────────────────────────────────────────────
   const handleStatus = async (ctx: Context) => {
     const paused = appStateRepo.get('paused') === 'true';
+    const reportsOn = appStateRepo.get('periodic_reports_enabled') === 'true';
 
     // Daily metrics (today)
     const todayFetched =
@@ -547,7 +586,8 @@ export function createBot(
     const text =
       `📊 <b>AfriPersonal Status</b>\n\n` +
       `⚙️ <b>System:</b> ${paused ? '⏸️ PAUSED' : '▶️ RUNNING'}\n` +
-      `📡 <b>Channel Watcher:</b> @freelance_ethio (Every 15m)\n\n` +
+      `📡 <b>Channel Watcher:</b> @freelance_ethio (Every 15m)\n` +
+      `⏱️ <b>15m Reports:</b> ${reportsOn ? '🟢 ON' : '🔴 OFF (/reports to toggle)'}\n\n` +
       `📅 <b>Today's Report:</b>\n` +
       `• Posts Scanned: <b>${todayFetched}</b>\n` +
       `• Matches Found: <b>${todayMatches}</b>\n` +
@@ -847,6 +887,31 @@ export function createBot(
           { parse_mode: 'HTML' },
         );
       }
+      return;
+    }
+
+    if (data === 'reports:on' || data === 'reports:off') {
+      const enable = data === 'reports:on';
+      appStateRepo.set('periodic_reports_enabled', enable ? 'true' : 'false');
+      await ctx.answerCallbackQuery({
+        text: enable ? '15-minute reports turned ON' : '15-minute reports turned OFF',
+      });
+      const keyboard = new InlineKeyboard().text(
+        enable ? '🔴 Turn OFF Reports' : '🟢 Turn ON Reports',
+        enable ? 'reports:off' : 'reports:on',
+      );
+      try {
+        await ctx.editMessageText(
+          `⏱️ <b>15-Minute Scan Reports:</b> ${enable ? '🟢 <b>ON</b>' : '🔴 <b>OFF</b>'}\n\n` +
+            (enable
+              ? `• You will receive a summary every 15 minutes showing new posts, relevant jobs, and rejected clutter.\n• You will also receive job cards whenever matches are found.`
+              : `• Silent mode active: You will <b>only</b> receive messages when a new relevant tech job is found.\n• Periodic scan summaries are muted.`),
+          {
+            parse_mode: 'HTML',
+            reply_markup: keyboard,
+          },
+        );
+      } catch {}
       return;
     }
 

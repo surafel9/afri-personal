@@ -73,6 +73,14 @@ async function main(): Promise<void> {
         // Run coordinator evaluation right away so pending messages are evaluated and delivered
         const evalSummary = await coordinator.runCycle();
         const isPaused = appStateRepo.get('paused') === 'true';
+        const reportsEnabled = appStateRepo.get('periodic_reports_enabled') === 'true';
+
+        // When reports are turned OFF, only relevant job notifications are delivered above.
+        // We skip sending the periodic 15-minute summary message.
+        if (!reportsEnabled) {
+          logger.debug('15-minute periodic reports are OFF; skipping summary message');
+          return;
+        }
 
         let reportText: string;
         if (stats.newPosts === 0) {
