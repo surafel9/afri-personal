@@ -53,9 +53,9 @@ export function getStartActionText(): string {
     `⚡ <b>Job Watcher Active</b>\n\n` +
     `Monitoring <b>@freelance_ethio</b> for technical roles.\n\n` +
     `<b>Commands:</b>\n` +
-    `• /fetch50 — Fetch recent 50 jobs\n` +
+    `• /fetch — Screen recent posts (50, 100, 150, 200)\n` +
     `• /reports — Toggle 15-minute scan reports (ON/OFF)\n` +
-    `• /status — Check status\n` +
+    `• /status — Check status & daily report\n` +
     `• /profile — View your profile\n` +
     `• /clear — Clear chat history\n` +
     `• /help — Help & instructions`
@@ -231,7 +231,7 @@ export function createBot(
 
     const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
     const menuKeyboard = new InlineKeyboard()
-      .text('⚡ Fetch Recent 50', 'action:fetch50')
+      .text('⚡ Fetch Recent Jobs', 'action:fetch_menu')
       .text(
         reportsOn ? '⏱️ Reports: 🟢 ON' : '⏱️ Reports: 🔴 OFF',
         reportsOn ? 'reports:off' : 'reports:on',
@@ -356,20 +356,54 @@ export function createBot(
   bot.command('clear', handleClear);
   bot.hears('🧹 Clear Chat', handleClear);
 
-  // ── /fetch50 — On-demand 50 recent posts fetcher ───────────────────────────
-  const handleFetch50 = async (ctx: Context) => {
+  // ── /fetch — On-demand custom posts fetcher (50, 100, 150, 200) ──────────
+  const fetchOptionsKeyboard = new InlineKeyboard()
+    .text('50 Posts', 'fetch:50')
+    .text('100 Posts', 'fetch:100')
+    .row()
+    .text('150 Posts', 'fetch:150')
+    .text('200 Posts', 'fetch:200')
+    .row()
+    .text('❌ Cancel', 'confirm:cancel');
+
+  const showFetchMenu = async (ctx: Context) => {
     await ctx.reply(
-      '⏳ <b>Fetching and screening the 50 most recent posts from @freelance_ethio...</b>',
+      '📥 <b>On-Demand Job Screening</b>\n\n' +
+        'How many recent posts from <b>@freelance_ethio</b> would you like to screen?',
       {
         parse_mode: 'HTML',
+        reply_markup: fetchOptionsKeyboard,
       },
     );
+  };
+
+  const executeFetch = async (ctx: Context, count = 50) => {
+    const validCount = Math.min(Math.max(count, 10), 500);
+
+    if (ctx.callbackQuery) {
+      try {
+        await ctx.editMessageText(
+          `⏳ <b>Fetching and screening the ${validCount} most recent posts from @freelance_ethio...</b>`,
+          { parse_mode: 'HTML' },
+        );
+      } catch {
+        await ctx.reply(
+          `⏳ <b>Fetching and screening the ${validCount} most recent posts from @freelance_ethio...</b>`,
+          { parse_mode: 'HTML' },
+        );
+      }
+    } else {
+      await ctx.reply(
+        `⏳ <b>Fetching and screening the ${validCount} most recent posts from @freelance_ethio...</b>`,
+        { parse_mode: 'HTML' },
+      );
+    }
 
     try {
       const channelUrl =
         config.TELEGRAM_CHANNEL_URL ?? 'https://t.me/s/freelance_ethio';
       const adapter = new TelegramWebAdapter(channelUrl, db);
-      const rawPosts = await adapter.fetchRecent(50);
+      const rawPosts = await adapter.fetchRecent(validCount);
 
       const activeProfileRow = profileRepo.getActive();
       if (!activeProfileRow) {
@@ -457,7 +491,8 @@ export function createBot(
         }
       }
 
-      await ctx.reply(
+      await bot.api.sendMessage(
+        ownerChatId,
         `✅ <b>Scan Complete!</b>\n\n` +
           `• Evaluated: <b>${evaluatedCount}</b> recent channel posts\n` +
           `• Qualified Tech Jobs: <b>${matchesCount}</b> delivered to your chat\n` +
@@ -465,15 +500,27 @@ export function createBot(
         { parse_mode: 'HTML' },
       );
     } catch (err) {
-      logger.error({ err }, 'Error during on-demand 50 fetch');
+      logger.error({ err }, 'Error during on-demand fetch');
       await ctx.reply(
         '⚠️ Error fetching posts from channel. Please check your internet connection and try again.',
       );
     }
   };
 
-  bot.command('fetch50', handleFetch50);
-  bot.hears('📥 Fetch 50 Recent Jobs', handleFetch50);
+  const handleFetchCommand = async (ctx: Context) => {
+    const textArg = ctx.message?.text?.split(' ')[1];
+    if (textArg && !isNaN(parseInt(textArg, 10))) {
+      await executeFetch(ctx, parseInt(textArg, 10));
+    } else {
+      await showFetchMenu(ctx);
+    }
+  };
+
+  bot.command('fetch', handleFetchCommand);
+  bot.command('fetch50', ctx => executeFetch(ctx, 50));
+  bot.hears('📥 Fetch Recent Jobs', showFetchMenu);
+  bot.hears('⚡ Fetch Recent Jobs', showFetchMenu);
+  bot.hears('📥 Fetch 50 Recent Jobs', ctx => executeFetch(ctx, 50));
 
   // ── /help ──────────────────────────────────────────────────────────────────
   bot.command('help', async ctx => {
@@ -866,9 +913,22 @@ export function createBot(
   bot.on('callback_query:data', async ctx => {
     const data = ctx.callbackQuery.data;
 
+    if (data === 'action:fetch_menu') {
+      await ctx.answerCallbackQuery();
+      await showFetchMenu(ctx);
+      return;
+    }
+
     if (data === 'action:fetch50') {
       await ctx.answerCallbackQuery({ text: 'Starting 50 post scan...' });
-      await handleFetch50(ctx);
+      await executeFetch(ctx, 50);
+      return;
+    }
+
+    if (data.startsWith('fetch:')) {
+      const count = parseInt(data.split(':')[1] ?? '50', 10);
+      await ctx.answerCallbackQuery({ text: `Starting ${count} post scan...` });
+      await executeFetch(ctx, count);
       return;
     }
 

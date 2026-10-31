@@ -220,16 +220,30 @@ export class TelegramWebAdapter implements SourceAdapter {
     const sorted = allPosts.sort((a, b) => numericId(a.messageId) - numericId(b.messageId));
     const target = sorted.slice(-limit);
     const fetchedAt = new Date();
+    const channelName = this.channelUrl.split('/').pop() ?? 'freelance_ethio';
 
-    return target.map((post) => ({
-      sourceId: this.sourceId,
-      externalId: post.messageId,
-      postedAt: post.postedAt,
-      fetchedAt,
-      text: post.text,
-      links: post.links,
-      hasMedia: false,
-    }));
+    return target.map((post) => {
+      const postUrl = `https://t.me/${channelName}/${post.messageId}`;
+      const uniqueLinks = [
+        postUrl,
+        ...post.links.filter(
+          (l) =>
+            l !== postUrl &&
+            !l.endsWith(`/${channelName}`) &&
+            !l.endsWith(`/${channelName}/`),
+        ),
+      ];
+
+      return {
+        sourceId: this.sourceId,
+        externalId: post.messageId,
+        postedAt: post.postedAt,
+        fetchedAt,
+        text: post.text,
+        links: uniqueLinks,
+        hasMedia: false,
+      };
+    });
   }
 
   /**

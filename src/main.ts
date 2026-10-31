@@ -197,8 +197,8 @@ async function main(): Promise<void> {
       try {
         await bot.api.setMyCommands([
           { command: 'start', description: 'Start & welcome menu' },
+          { command: 'fetch', description: 'Screen 50, 100, 150, or 200 posts' },
           { command: 'reports', description: 'Toggle 15m scan reports' },
-          { command: 'fetch50', description: 'Fetch recent 50 jobs' },
           { command: 'status', description: 'Check status & daily report' },
           { command: 'profile', description: 'View career profile' },
           { command: 'clear', description: 'Clear chat' },
