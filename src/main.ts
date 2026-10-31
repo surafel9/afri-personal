@@ -17,6 +17,7 @@ import { logger } from './observability/logger.js';
 import { createDb } from './database/client.js';
 import { runMigrations } from './database/migrate.js';
 import { seedDatabase } from './database/seed.js';
+import { createProfileRepo } from './database/repositories/profile.js';
 import { createBot } from './bot/bot.js';
 import { NotificationDeliveryService } from './notifications/delivery.js';
 import { PipelineCoordinator } from './pipeline/coordinator.js';
@@ -79,13 +80,37 @@ async function main(): Promise<void> {
 
   // 6. Start HTTP health server for cloud platforms (Render, etc.)
   const port = process.env.PORT || 8080;
+  const profileRepo = createProfileRepo(db);
   const server = http.createServer((_req, res) => {
+    const active = profileRepo.getActive();
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', service: 'afripersonal' }));
+    res.end(
+      JSON.stringify({
+        status: 'ok',
+        service: 'afripersonal',
+        activeProfile: active ? active.name : null,
+      }),
+    );
   });
   server.listen(port, () => {
     logger.info({ port }, 'Health server listening');
   });
+
+  // Keep Render awake by self-pinging every 9 minutes (Render free tier sleeps after 15m)
+  const pingUrl =
+    process.env.RENDER_EXTERNAL_URL ||
+    (process.env.RENDER ? 'https://afri-personal.onrender.com' : null);
+  let keepAliveInterval: NodeJS.Timeout | null = null;
+  if (pingUrl) {
+    keepAliveInterval = setInterval(async () => {
+      try {
+        await fetch(pingUrl);
+        logger.debug({ url: pingUrl }, 'Keep-alive self-ping sent');
+      } catch (err: unknown) {
+        logger.debug({ err: (err as Error)?.message }, 'Keep-alive self-ping non-fatal warning');
+      }
+    }, 9 * 60 * 1000);
+  }
 
   // 7. Handle graceful shutdown
   let isShuttingDown = false;
@@ -95,6 +120,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'Shutdown signal received, closing resources...');
 
     try {
+      if (keepAliveInterval) clearInterval(keepAliveInterval);
       server.close();
       poller?.stop();
       coordinator.stop();

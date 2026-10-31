@@ -285,12 +285,10 @@ export function createBot(
       }
     }
 
-    if (currentMsgId) {
-      const minId =
-        preservedIds.size > 0
-          ? Math.min(...preservedIds) + 1
-          : Math.max(1, currentMsgId - 500);
-      for (let id = currentMsgId; id >= minId; id--) {
+    // 2. Only delete messages strictly ABOVE the welcome message
+    // NEVER delete below welcomeMsgId, and NEVER delete down to 1
+    if (currentMsgId && welcomeMsgId > 0) {
+      for (let id = currentMsgId - 1; id > welcomeMsgId; id--) {
         if (!preservedIds.has(id)) {
           idsToDelete.add(id);
         }
@@ -825,11 +823,19 @@ export function createBot(
     if (data === 'confirm:clear' || data === 'action:clear') {
       await ctx.answerCallbackQuery({ text: 'Conversation cleared' });
       const currentMsgId = ctx.callbackQuery.message?.message_id;
-      await clearAllChatMessages(ownerChatId, currentMsgId);
-      await bot.api.sendMessage(ownerChatId, '🧹 <b>Chat cleared.</b>', {
-        parse_mode: 'HTML',
-        reply_markup: removeKeyboardMarkup,
-      });
+      const count = await clearAllChatMessages(ownerChatId, currentMsgId);
+      try {
+        await ctx.editMessageText(
+          `🧹 <b>Chat cleared.</b> Removed ${count} job messages.\n\nYour active profile and channel watcher remain running.`,
+          { parse_mode: 'HTML' },
+        );
+      } catch {
+        await bot.api.sendMessage(
+          ownerChatId,
+          `🧹 <b>Chat cleared.</b> Removed ${count} job messages.`,
+          { parse_mode: 'HTML' },
+        );
+      }
       return;
     }
 
