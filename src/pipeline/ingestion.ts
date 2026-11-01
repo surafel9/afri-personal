@@ -84,6 +84,7 @@ export class IngestionService {
 
       if (!inserted) {
         // Message was already ingested previously
+        this.appStateRepo.set(`checkpoint:${raw.sourceId}`, raw.externalId);
         return {
           inserted: false,
           isDuplicate: true,
@@ -167,6 +168,7 @@ export class IngestionService {
           result.duplicateCount++;
         } else if (res.reason === 'error') {
           result.errorCount++;
+          break;
         }
       }
     } catch (err) {
@@ -178,4 +180,3 @@ export class IngestionService {
     return result;
   }
 }
-

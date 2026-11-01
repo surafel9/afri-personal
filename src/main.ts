@@ -220,7 +220,7 @@ async function main(): Promise<void> {
       try {
         await bot.api.setMyCommands([
           { command: 'start', description: 'Start & welcome menu' },
-          { command: 'menu', description: 'Open action menu & docked keyboard' },
+          { command: 'menu', description: 'Open action menu' },
           { command: 'fetch', description: 'Screen posts by channel (50-200)' },
           { command: 'reports', description: 'Toggle 15m scan reports (ON/OFF)' },
           { command: 'status', description: 'Check status, metrics & feedback' },

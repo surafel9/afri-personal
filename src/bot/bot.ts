@@ -10,7 +10,6 @@ import path from 'node:path';
 import {
   Bot,
   Context,
-  Keyboard,
   InlineKeyboard,
   GrammyError,
   HttpError,
@@ -44,20 +43,6 @@ import { logger } from '../observability/logger.js';
 
 export const removeKeyboardMarkup = { remove_keyboard: true as const };
 
-export function buildPersistentKeyboard(reportsOn = true): Keyboard {
-  return new Keyboard()
-    .text('⚡ Fetch Recent Jobs')
-    .text(reportsOn ? '⏱️ Reports: 🟢 ON' : '⏱️ Reports: 🔴 OFF')
-    .row()
-    .text('📊 Status')
-    .text('⚙️ Profile')
-    .row()
-    .text('🧹 Clear Chat')
-    .text('ℹ️ Help')
-    .resized()
-    .persistent();
-}
-
 export function getWelcomeText(): string {
   return '👋 <b>Welcome to AfriPersonal!</b>';
 }
@@ -73,7 +58,7 @@ export function getStartActionText(): string {
     `⏱️ <b>Auto-Scan:</b> Runs silently every 15 minutes\n` +
     `🎯 <b>Filter:</b> Strict technical titles only (zero non-tech clutter)\n\n` +
     `<b>Commands:</b>\n` +
-    `• /menu — Open action menu & docked keyboard\n` +
+    `• /menu — Open the action menu\n` +
     `• /fetch — Screen posts on-demand (50, 100, 150, 200)\n` +
     `• /reports — Toggle 15m scan reports (ON/OFF)\n` +
     `• /status — View today's stats, channels & feedback\n` +
@@ -251,17 +236,14 @@ export function createBot(
         ? getStartActionText()
         : `${getWelcomeText()}\n\n${getStartActionText()}`;
 
-    const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
-    const persistentKeyboard = buildPersistentKeyboard(reportsOn);
-
     const sentAction = ctx
       ? await ctx.reply(actionText, {
           parse_mode: 'HTML',
-          reply_markup: persistentKeyboard,
+          reply_markup: removeKeyboardMarkup,
         })
       : await bot.api.sendMessage(chatId, actionText, {
           parse_mode: 'HTML',
-          reply_markup: persistentKeyboard,
+          reply_markup: removeKeyboardMarkup,
         });
 
     return { photoMsgId, actionMsgId: sentAction.message_id };
@@ -707,20 +689,19 @@ export function createBot(
 
   // ── /menu ──────────────────────────────────────────────────────────────────
   const handleMenu = async (ctx: Context) => {
-    const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
     const text =
       `📋 <b>AfriPersonal Main Menu</b>\n\n` +
-      `⚡ Use the docked menu buttons below anytime on PC and mobile:\n\n` +
-      `• <b>⚡ Fetch Recent Jobs:</b> Screen recent posts on-demand (50-200)\n` +
-      `• <b>⏱️ Reports:</b> Toggle 15-minute periodic scan summaries\n` +
-      `• <b>📊 Status:</b> Check today's activity, channel health & feedback\n` +
-      `• <b>⚙️ Profile:</b> View active technical career preferences\n` +
-      `• <b>🧹 Clear Chat:</b> Wipe conversation clutter until the first message\n` +
-      `• <b>ℹ️ Help:</b> View bot guide & full command documentation`;
+      `Use Telegram's menu button to choose an action:\n\n` +
+      `• <b>/fetch:</b> Screen recent posts on-demand (50-200)\n` +
+      `• <b>/reports:</b> Toggle 15-minute periodic scan summaries\n` +
+      `• <b>/status:</b> Check today's activity, channel health & feedback\n` +
+      `• <b>/profile:</b> View active technical career preferences\n` +
+      `• <b>/clear:</b> Wipe conversation clutter until the first message\n` +
+      `• <b>/help:</b> View bot guide & full command documentation`;
 
     await ctx.reply(text, {
       parse_mode: 'HTML',
-      reply_markup: buildPersistentKeyboard(reportsOn),
+      reply_markup: removeKeyboardMarkup,
     });
   };
 
@@ -729,7 +710,6 @@ export function createBot(
 
   // ── /help ──────────────────────────────────────────────────────────────────
   const handleHelp = async (ctx: Context) => {
-    const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
     const channels = getMonitoredChannels();
     const channelNames = channels.map(c => c.name).join(', ');
     const text =
@@ -739,10 +719,10 @@ export function createBot(
       `• <b>Zero Manual Work:</b> You never need to browse channels or copy/paste posts.\n` +
       `• <b>Strict Title Filter:</b> Only genuine tech titles (Developer, Software, Engineer, Fullstack, Mobile, DevOps, UI/UX, etc.) are matched.\n` +
       `• <b>Verbatim Delivery:</b> Sends the exact original post with direct link to your DM.\n\n` +
-      `<b>Docked Bottom Menu:</b>\n` +
-      `The menu buttons stay permanently docked at the bottom of your screen in PC (Telegram Desktop) and mobile.\n\n` +
+      `<b>Telegram Menu:</b>\n` +
+      `Use Telegram's menu button to open the available commands.\n\n` +
       `<b>Commands:</b>\n` +
-      `• /menu — Re-open action menu & docked keyboard\n` +
+      `• /menu — Open the action menu\n` +
       `• /fetch — Screen posts on-demand (50, 100, 150, 200)\n` +
       `• /reports — Toggle 15-minute periodic scan reports (ON/OFF)\n` +
       `• /status — Operational health, channels & metrics\n` +
@@ -756,7 +736,7 @@ export function createBot(
 
     await ctx.reply(text, {
       parse_mode: 'HTML',
-      reply_markup: buildPersistentKeyboard(reportsOn),
+      reply_markup: removeKeyboardMarkup,
     });
   };
 
@@ -798,7 +778,7 @@ export function createBot(
           : `• Silent mode active: You will <b>only</b> receive messages when a new relevant tech job is found.\n• Periodic scan summaries are muted.`),
       {
         parse_mode: 'HTML',
-        reply_markup: buildPersistentKeyboard(isEnabled),
+        reply_markup: removeKeyboardMarkup,
       },
     );
   };
@@ -919,7 +899,7 @@ export function createBot(
 
     await ctx.reply(text, {
       parse_mode: 'HTML',
-      reply_markup: buildPersistentKeyboard(reportsOn),
+      reply_markup: removeKeyboardMarkup,
     });
   };
 
@@ -969,10 +949,9 @@ export function createBot(
       `⛔ <b>Deal-Breakers:</b>\n  ${p.dealBreakers.join(', ')}\n\n` +
       `📊 <b>Notification Threshold:</b> ${p.minScoreThreshold}/100`;
 
-    const reportsOn = appStateRepo.get('periodic_reports_enabled') !== 'false';
     await ctx.reply(text, {
       parse_mode: 'HTML',
-      reply_markup: buildPersistentKeyboard(reportsOn),
+      reply_markup: removeKeyboardMarkup,
     });
   };
 
