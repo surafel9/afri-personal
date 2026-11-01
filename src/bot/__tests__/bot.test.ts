@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { GrammyError } from 'grammy';
 import { createDb } from '../../database/client.js';
 import { runMigrations } from '../../database/migrate.js';
-import { createBot, buildPersistentKeyboard } from '../bot.js';
+import { createBot, removeKeyboardMarkup } from '../bot.js';
 import { createProfileRepo } from '../../database/repositories/profile.js';
 import { createSourcesRepo } from '../../database/repositories/sources.js';
 import { createFeedbackRepo } from '../../database/repositories/feedback.js';
@@ -394,24 +394,11 @@ describe('Bot & Security Middleware', () => {
     expect(payload.text).toContain('@qena_jobs');
   });
 
-  it('buildPersistentKeyboard configures persistent and resized keyboard with dynamic reports toggle', () => {
-    const kbOn = buildPersistentKeyboard(true);
-    expect(kbOn.is_persistent).toBe(true);
-    expect(kbOn.resize_keyboard).toBe(true);
-    const flatOn = kbOn.keyboard.flat().map(b => b.text);
-    expect(flatOn).toContain('⚡ Fetch Recent Jobs');
-    expect(flatOn).toContain('⏱️ Reports: 🟢 ON');
-    expect(flatOn).toContain('📊 Status');
-    expect(flatOn).toContain('⚙️ Profile');
-    expect(flatOn).toContain('🧹 Clear Chat');
-    expect(flatOn).toContain('ℹ️ Help');
-
-    const kbOff = buildPersistentKeyboard(false);
-    const flatOff = kbOff.keyboard.flat().map(b => b.text);
-    expect(flatOff).toContain('⏱️ Reports: 🔴 OFF');
+  it('uses Telegram command menu and removes reply keyboards', () => {
+    expect(removeKeyboardMarkup).toEqual({ remove_keyboard: true });
   });
 
-  it('handles persistent keyboard button texts for fetch, reports toggle, and menu', async () => {
+  it('handles command menu actions without re-attaching a reply keyboard', async () => {
     const { bot, sentMessages } = setupMockBot();
 
     // 1. Click "⚡ Fetch Recent Jobs" button
@@ -429,7 +416,7 @@ describe('Bot & Security Middleware', () => {
     const fetchMsg = sentMessages[sentMessages.length - 1];
     expect((fetchMsg?.payload as { text: string }).text).toContain('On-Demand Job Screening');
 
-    // 2. Click "⏱️ Reports: 🟢 ON" button to toggle reports OFF
+    // 2. Reports still toggles without a reply keyboard.
     await bot.handleUpdate({
       update_id: 11,
       message: {
@@ -443,11 +430,11 @@ describe('Bot & Security Middleware', () => {
 
     const reportMsg = sentMessages[sentMessages.length - 1];
     expect((reportMsg?.payload as { text: string }).text).toContain('🔴 <b>OFF</b>');
-    const reportPayload = reportMsg?.payload as { reply_markup?: { keyboard: Array<Array<{ text: string }>> } };
-    const flatButtons = reportPayload.reply_markup?.keyboard.flat().map(b => b.text);
-    expect(flatButtons).toContain('⏱️ Reports: 🔴 OFF');
+    expect((reportMsg?.payload as { reply_markup?: unknown }).reply_markup).toEqual(
+      removeKeyboardMarkup,
+    );
 
-    // 3. /menu command re-attaches the persistent menu
+    // 3. /menu shows command guidance without re-attaching a reply keyboard.
     await bot.handleUpdate({
       update_id: 12,
       message: createCommandMessage(32, '/menu', OWNER_ID),
@@ -455,5 +442,8 @@ describe('Bot & Security Middleware', () => {
 
     const menuMsg = sentMessages[sentMessages.length - 1];
     expect((menuMsg?.payload as { text: string }).text).toContain('AfriPersonal Main Menu');
+    expect((menuMsg?.payload as { reply_markup?: unknown }).reply_markup).toEqual(
+      removeKeyboardMarkup,
+    );
   });
 });

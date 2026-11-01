@@ -70,7 +70,8 @@ export class TelegramWebAdapter implements SourceAdapter {
 
   /**
    * Fetch new posts from the channel dynamically.
-   * - On cold boot / first run: anchors checkpoint to the latest post ID so old posts aren't re-alerted.
+   * - On cold boot / first run: yields the posts on the current page so they are
+   *   evaluated and the checkpoint is built from successfully ingested messages.
    * - On recurring cycles: dynamically paginates backward using ?before=<minId>
    *   to capture ALL new posts published since lastSeenId (whether 5, 200, 500, or 1000 posts).
    */
@@ -78,10 +79,8 @@ export class TelegramWebAdapter implements SourceAdapter {
     const checkpointKey = `checkpoint:${this.sourceId}`;
     const lastSeenIdStr = this.appStateRepo.get(checkpointKey);
     const lastSeenId = lastSeenIdStr ? numericId(lastSeenIdStr) : null;
-    const isFirstRun = lastSeenId === null;
-
     logger.info(
-      { sourceId: this.sourceId, isFirstRun, lastSeenId },
+      { sourceId: this.sourceId, isFirstRun: lastSeenId === null, lastSeenId },
       'TelegramWebAdapter: starting fetch',
     );
 
@@ -101,42 +100,45 @@ export class TelegramWebAdapter implements SourceAdapter {
     }
 
     allPosts.sort((a, b) => numericId(a.messageId) - numericId(b.messageId));
-    const highestIdOnPage = Math.max(...allPosts.map((p) => numericId(p.messageId)));
-
-    // Case 1: First Run / Cold Boot
-    // Anchor checkpoint to current latest post to avoid re-alerting old posts on restarts.
-    if (isFirstRun) {
-      if (isFinite(highestIdOnPage) && highestIdOnPage > 0) {
-        this.appStateRepo.set(checkpointKey, String(highestIdOnPage));
-        logger.info(
-          { sourceId: this.sourceId, initialCheckpoint: highestIdOnPage },
-          'TelegramWebAdapter: initialized checkpoint to current latest post',
-        );
-      }
-      return;
-    }
-
-    // Case 2: Dynamic pagination for ALL new posts since lastSeenId
-    // Paginates backwards until minId <= lastSeenId (handles 10, 200, 500, or 1000+ posts).
-    const MAX_PAGES = 50; // Safeguard: allows up to ~1,000 posts per cycle
+    // On a cold boot, process the current page. On later runs, paginate until
+    // the stored checkpoint is reached so no arbitrary page cap can skip posts.
+    let paginationComplete = lastSeenId === null;
     let pagesFetched = 1;
 
-    while (pagesFetched < MAX_PAGES) {
+    while (lastSeenId !== null && !paginationComplete) {
       const minId = Math.min(...allPosts.map((p) => numericId(p.messageId)));
-      if (!isFinite(minId) || minId <= lastSeenId) break;
+      if (!isFinite(minId) || minId <= lastSeenId) {
+        paginationComplete = true;
+        break;
+      }
 
       await sleep(600);
       const olderUrl = `${this.channelUrl}?before=${minId}`;
       const olderHtml = await this.fetchPage(olderUrl);
-      if (!olderHtml) break;
+      if (!olderHtml) {
+        logger.warn(
+          { sourceId: this.sourceId, lastSeenId, pagesFetched },
+          'TelegramWebAdapter: pagination incomplete; preserving checkpoint for retry',
+        );
+        return;
+      }
 
       const olderPosts = parsePosts(olderHtml);
-      if (olderPosts.length === 0) break;
+      if (olderPosts.length === 0) {
+        paginationComplete = true;
+        break;
+      }
 
       const newOlderPosts = olderPosts.filter(
         (op) => !allPosts.some((p) => p.messageId === op.messageId),
       );
-      if (newOlderPosts.length === 0) break;
+      if (newOlderPosts.length === 0) {
+        logger.warn(
+          { sourceId: this.sourceId, lastSeenId, pagesFetched },
+          'TelegramWebAdapter: pagination made no progress; preserving checkpoint for retry',
+        );
+        return;
+      }
 
       allPosts.push(...newOlderPosts);
       pagesFetched++;
@@ -147,7 +149,7 @@ export class TelegramWebAdapter implements SourceAdapter {
 
     // Filter strictly posts newer than lastSeenId
     const newPostsToYield = allPosts.filter(
-      (p) => numericId(p.messageId) > lastSeenId,
+      (p) => lastSeenId === null || numericId(p.messageId) > lastSeenId,
     );
 
     const fetchedAt = new Date();
@@ -179,14 +181,14 @@ export class TelegramWebAdapter implements SourceAdapter {
       yielded++;
     }
 
-    // Advance checkpoint to the highest post seen
-    const currentMax = Math.max(...allPosts.map((p) => numericId(p.messageId)));
-    if (isFinite(currentMax) && currentMax > lastSeenId) {
-      this.appStateRepo.set(checkpointKey, String(currentMax));
-    }
-
     logger.info(
-      { sourceId: this.sourceId, yielded, totalParsed: allPosts.length, newCheckpoint: currentMax },
+      {
+        sourceId: this.sourceId,
+        yielded,
+        totalParsed: allPosts.length,
+        checkpoint: this.appStateRepo.get(checkpointKey),
+        paginationComplete,
+      },
       'TelegramWebAdapter: dynamic fetch complete',
     );
   }
@@ -399,4 +401,3 @@ function numericId(id: string): number {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
