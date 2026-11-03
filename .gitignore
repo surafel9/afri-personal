@@ -7,10 +7,12 @@ dist/
 # Environment files
 .env
 .env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Database files
 data/
+data/**
 *.db
 *.db-shm
 *.db-wal
@@ -29,4 +31,3 @@ Thumbs.db
 
 # Drizzle generated files (keep migrations, ignore snapshots if preferred)
 drizzle/
-

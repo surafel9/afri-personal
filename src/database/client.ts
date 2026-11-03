@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import * as schema from './schema.js';
 
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
@@ -11,6 +11,23 @@ export function createDb(dbPath: string): {
   db: ReturnType<typeof drizzle<typeof schema>>;
   sqlite: Database.Database;
 } {
+  const resolvedDbPath = resolve(dbPath);
+  const repositoryPath = resolve(process.cwd());
+  const repositoryDataPath = resolve(repositoryPath, 'data', 'afripersonal.db');
+
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !isAbsolute(dbPath) &&
+    resolvedDbPath === repositoryDataPath
+  ) {
+    console.warn(
+      '[AfriPersonal] WARNING: production is using the repository-local SQLite database at ' +
+        `${dbPath}. Set DB_PATH to an external persistent path such as ` +
+        '`/var/data/afripersonal.db` or `/var/lib/afripersonal/afripersonal.db` ' +
+        'so deployments cannot replace the live database.',
+    );
+  }
+
   // Ensure the parent directory exists (not needed for :memory:)
   if (dbPath !== ':memory:') {
     mkdirSync(dirname(dbPath), { recursive: true });

@@ -9,10 +9,12 @@ WorkingDirectory=/home/sinux/Projects/personal/afri-personal
 ExecStart=/usr/bin/node dist/main.js
 Restart=on-failure
 RestartSec=10s
+StateDirectory=afripersonal
 
 # Environment & Secrets
 EnvironmentFile=/home/sinux/Projects/personal/afri-personal/.env
 Environment=NODE_ENV=production
+Environment=DB_PATH=/var/lib/afripersonal/afripersonal.db
 
 # Graceful termination
 KillSignal=SIGTERM
@@ -28,8 +30,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/home/sinux/Projects/personal/afri-personal/data
+ReadWritePaths=/var/lib/afripersonal
 
 [Install]
 WantedBy=multi-user.target
-
